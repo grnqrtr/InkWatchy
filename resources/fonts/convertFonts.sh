@@ -1,4 +1,5 @@
-#!/bin/bash
+#! /usr/bin/env nix-shell
+#! nix-shell -i bash -p bash
 source ../global_functions.sh
 
 pio_env=$(get_pio_env)
