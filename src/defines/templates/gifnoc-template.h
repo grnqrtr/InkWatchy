@@ -31,6 +31,7 @@
 #define UPDATE_MODULE_IF_CHARGING 0 // Update modules very fast if its charging, not only every minute
 #define WIFI_MODULE 1
 #define BITCOIN_MODULE 1 // Remember to define the api key for it in confidential.h
+#define SMALL_BTC_MODULE 1 // At default, show the small btc module mode, if 0 show the bigger one
 
 // Priorities - max is 24
 #define MAIN_LOOP_PRIORITY 16
@@ -89,6 +90,7 @@
 
 // Debugging help
 #define DEBUG 0
+#define DEBUG_SLOWER 0 // Makes debug as slow as the regular build
 #define EINK_COUNTER 0      // Shows a counter somewhere on screen
 #define DUMP_INIT_DEBUG 0   // If debug, shows at init init information
 #define DUMP_LOOP_DEBUG 0   // If debug, at every loop iteration dump hardware values that can change
@@ -102,6 +104,8 @@
 #define SCOM_TASK 0
 #define SCOM_SLEEP_DISABLE 0 // Disable sleep when scom is enabled
 #if SCOM_TASK && DEBUG
+#undef VIBRATION_BUTTON_TIME
+#undef VIBRATION_ACTION_TIME
 #define VIBRATION_BUTTON_TIME 800      // Time in ms to the motor to vibrate after clicking a button. 0 means none
 #define VIBRATION_ACTION_TIME 800      // Time in ms to the motor to vibrate when the UI receives an action
 #endif
@@ -129,7 +133,7 @@
 // Battery
 #define BATTERY_MIN_VOLTAGE 3.3
 #define BATTERY_CRIT_VOLTAGE 3.15
-#define BATTERY_CHARGE_VOLTAGE 4.18
+#define BATTERY_CHARGE_VOLTAGE 4.14
 #define BATTERY_MAX_VOLTAGE 4.18 // For calculating percentages, upper limit
 #define BAD_BATTERY 0 // This true makes it use the values below, for when your battery doesn't hold the upper voltages anymore
 #define BAD_BATTERY_MAX_VOLTAGE 4.00
