@@ -19,6 +19,14 @@ const watchfaceDef szybetStarfield = {
 };
 #endif
 
+#if WATCHFACE_NATIVE_STARFIELD
+const watchfaceDef nativeStarfield = {
+    .manager = wfmOne,
+    .name = "Native Starfield",
+    .data = (genPointer)&nativeStarfieldDef,
+};
+#endif
+
 #if WATCHFACE_TAYCHRON
 const watchfaceDef tayDef = {
     .manager = wfmOne,
@@ -94,6 +102,11 @@ const watchfaceDef gsrStationary = {
 const watchfaceDef *watchfacesList[WATCHFACE_COUNT] = {
 #if WATCHFACE_INKFIELD_SZYBET
     &szybetStarfield,
+#else
+    &noWatchFace,
+#endif
+#if WATCHFACE_NATIVE_STARFIELD
+    &nativeStarfield,
 #else
     &noWatchFace,
 #endif

@@ -236,6 +236,9 @@ extern uint16_t SCWhite;
 #if WATCHFACE_INKFIELD_SZYBET
 #include "../ui/watchface/watchfaces/inkField_Szybet/inkField.h"
 #endif
+#if WATCHFACE_NATIVE_STARFIELD
+#include "../ui/watchface/watchfaces/starfield_Pacman/starfield.h"
+#endif
 #if WATCHFACE_DOMAIN_DOTP
 #include "../ui/watchface/watchfaces/domain_DotP/domain.h"
 #endif

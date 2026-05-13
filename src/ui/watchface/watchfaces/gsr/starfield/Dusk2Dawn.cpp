@@ -1,4 +1,10 @@
 #include "defines.h"
+#if WATCHFACE_NATIVE_STARFIELD && !(GSR_WATCHFACES && GSR_STARFIELD)
+#undef GSR_WATCHFACES
+#undef GSR_STARFIELD
+#define GSR_WATCHFACES 1
+#define GSR_STARFIELD 1
+#endif
 #if GSR_WATCHFACES && GSR_STARFIELD
 
 /*  Dusk2Dawn.cpp

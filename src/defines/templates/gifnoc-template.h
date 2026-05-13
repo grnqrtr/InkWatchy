@@ -9,6 +9,8 @@
 #define WATCHFACE_TEMP_TYPE CELSIUS // CELSIUS or FAHRENHEIT | Supported watchfaces: InkField, Slate and Taychron
 // InkField
 #define WATCHFACE_INKFIELD_SZYBET 1
+// Native Starfield (GSR Starfield art ported to InkWatchy's efficient native watchface manager + modules)
+#define WATCHFACE_NATIVE_STARFIELD 0
 // Taychron
 #define WATCHFACE_TAYCHRON 1
 #define WATCHFACE_TAYCHRON_DATE 0 // shows date below time
