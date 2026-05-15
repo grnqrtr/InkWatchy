@@ -5,10 +5,39 @@
 
 #include <HTTPClient.h>
 
+#if GSR_WATCHFACES && GSR_STARFIELD
+#include "../../watchface/watchfaces/gsr/starfield/icons.h"
+#endif
+
 #define MEMPOOL_BASEURL "https://mempool.space/api"
 #define BINANCE_BASEURL "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=1&startTime="
 
+#define STARFIELD_STEP_DIGIT_WIDTH 16
+#define STARFIELD_STEP_DIGIT_HEIGHT 25
+#define STARFIELD_STEP_DIGIT_SPACING 21
+
 bitcoinData btcData = {0};
+
+void drawBitcoinHeightStarfieldDigits(String height, int16_t x, int16_t y)
+{
+#if GSR_WATCHFACES && GSR_STARFIELD
+    const unsigned char *digits[] = {dd_0, dd_1, dd_2, dd_3, dd_4, dd_5, dd_6, dd_7, dd_8, dd_9};
+    for (uint8_t i = 0; i < height.length(); i++)
+    {
+        char c = height.charAt(i);
+        if (c < '0' || c > '9')
+        {
+            continue;
+        }
+        dis->drawBitmap(x + (i * STARFIELD_STEP_DIGIT_SPACING), y, digits[c - '0'], STARFIELD_STEP_DIGIT_WIDTH, STARFIELD_STEP_DIGIT_HEIGHT, SCBlack);
+    }
+#else
+    dis->setCursor(x, y + STARFIELD_STEP_DIGIT_HEIGHT);
+    setFont(getFont("smileandwave20"));
+    setTextSize(1);
+    dis->print(height);
+#endif
+}
 
 void saveBitcoinData()
 {
@@ -150,10 +179,7 @@ void wfBitrequestShow(buttonState button, bool *showBool)
         dis->print(lastSync);
 
         // Bitclock
-        dis->setCursor(modSq.cord.x, modSq.cord.y + modSq.size.h - 1);
-        setFont(getFont("smileandwave20"));
-        setTextSize(1);
-        dis->print(btcData.height);
+        drawBitcoinHeightStarfieldDigits(String(btcData.height), modSq.cord.x, modSq.cord.y + modSq.size.h - STARFIELD_STEP_DIGIT_HEIGHT);
     }
 
     rM.isBtcDataNew = false;
