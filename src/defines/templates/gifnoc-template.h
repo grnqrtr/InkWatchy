@@ -262,7 +262,7 @@ The default is this:
 #define BITCOIN_MODULE 0
 #define SMALL_BTC_MODULE 1 // At default, show the small btc module mode, if 0 show the bigger one
 #define BITCOIN_SYNC_TRIES 3
-#define BITCOIN_SYNC_INTERVAL_M 10 // When manually leaving wifi on, sync bitcoin every x minutes. Set to 0 to disable periodic bitcoin sync. Legacy alias: BITCOIN_SYNC_INTERVAL.
+#define BITCOIN_SYNC_INTERVAL_M 10 // When manually leaving wifi on, sync bitcoin every x minutes. Set to 0 to disable periodic bitcoin sync.
 #define CONWAY_MODULE 0                  // Conway module. to make it enabled CONWAY itself needs to be enabled
 #define CONWAY_MODULE_GRID_PERCANTAGE 50 // Percentage of initial grid filling
 
