@@ -1,4 +1,5 @@
 #include "wifiTask.h"
+#include "rtcMem.h"
 
 std::mutex wifiTaskMutex;
 bool isWifiTaskRunning;
