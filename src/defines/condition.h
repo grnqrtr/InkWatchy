@@ -28,7 +28,11 @@ Template for versioning
 #endif
 
 #ifndef BITCOIN_SYNC_INTERVAL_M
+#ifdef BITCOIN_SYNC_INTERVAL
+#define BITCOIN_SYNC_INTERVAL_M BITCOIN_SYNC_INTERVAL
+#else
 #define BITCOIN_SYNC_INTERVAL_M 10
+#endif
 #endif
 
 #if SCOM_TASK == 1 && DEBUG == 1
