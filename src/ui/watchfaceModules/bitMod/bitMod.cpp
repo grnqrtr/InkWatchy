@@ -44,6 +44,7 @@ void saveBitcoinData()
     size_t dataSize = sizeof(bitcoinData);
     fsSetBlob(CONF_BITCOIN, (uint8_t *)&btcData, dataSize);
     rM.isBtcDataAvail = true;
+    rM.isBtcDataNew = true;
 }
 
 void loadBitcoinData()
