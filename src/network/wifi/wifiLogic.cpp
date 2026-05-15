@@ -11,6 +11,7 @@ void wifiSyncModules()
 #if BITCOIN_MODULE
     softStartDelay();
     bitcoinSync(1);
+    rM.lastBtcManualSyncUnix = getUnixTime(timeRTCLocal);
 #endif
 }
 
@@ -55,6 +56,13 @@ void wifiKindOfPersistent()
 void turnOnWifiRegular()
 {
     // Regular turn on
+    createWifiTask(WIFI_CONNECTION_TRIES, wifiRegular, WIFI_PRIORITY_REGULAR);
+}
+
+void turnOnWifiManual()
+{
+    // User-requested wifi on: sync once, then leave wifi connected until the user turns it off.
+    rM.manualWifiEnabled = true;
     createWifiTask(WIFI_CONNECTION_TRIES, wifiRegular, WIFI_PRIORITY_REGULAR);
 }
 
@@ -110,12 +118,25 @@ void regularSync()
     else
     {
         // debugLog("Not doing regular sync: " + String(getUnixTime(timeRTCLocal) - rM.lastSyncUnix) + " " + BOOL_STR(rM.bat.isCharging));
-        if(isWifiTaskCheck() == false && wifiStatusWrap() != WifiOff) {
+        if(isWifiTaskCheck() == false && wifiStatusWrap() != WifiOff && rM.manualWifiEnabled == false) {
             debugLog("Turning wifi off after regular sync");
             turnOffWifi();
         }
     }
     #endif
+
+#if BITCOIN_MODULE && BITCOIN_SYNC_INTERVAL_M > 0
+    if (rM.manualWifiEnabled == true && isWifiTaskCheck() == false && WiFi.status() == WL_CONNECTED)
+    {
+        uint64_t now = getUnixTime(timeRTCLocal);
+        uint64_t syncIntervalSeconds = (uint64_t)BITCOIN_SYNC_INTERVAL_M * 60;
+        if (rM.lastBtcManualSyncUnix == 0 || now - rM.lastBtcManualSyncUnix >= syncIntervalSeconds)
+        {
+            debugLog("Manual wifi bitcoin sync going on");
+            createWifiTask(WIFI_CONNECTION_TRIES_PERSISTENT, wifiSyncModules, WIFI_PRIORITY_PERSISTENT);
+        }
+    }
+#endif
 }
 
 #define MIN_RSSI -100

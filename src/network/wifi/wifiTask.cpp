@@ -161,7 +161,10 @@ void turnOnWifiTask(void *parameter)
     }
     debugLog("Setting isWifiTaskRunning to false NOW");
     setBoolMutex(&wifiTaskMutex, &isWifiTaskRunning, false);
-    turnOffWifiMinimal();
+    if (rM.manualWifiEnabled == false)
+    {
+        turnOffWifiMinimal();
+    }
     vTaskDelete(NULL);
 }
 
@@ -185,6 +188,7 @@ void turnOffWifiMinimal()
 void turnOffWifi()
 {
     debugLog("Turning wifi off");
+    rM.manualWifiEnabled = false;
     if (isWifiTaskCheck() == true)
     {
 #if DEBUG

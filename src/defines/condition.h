@@ -27,6 +27,10 @@ Template for versioning
 #define BOOK_MODULE_ENABLED 1
 #endif
 
+#ifndef BITCOIN_SYNC_INTERVAL_M
+#define BITCOIN_SYNC_INTERVAL_M 10
+#endif
+
 #if SCOM_TASK == 1 && DEBUG == 1
 #define SCOM_TASK_ENABLED 1
 #endif

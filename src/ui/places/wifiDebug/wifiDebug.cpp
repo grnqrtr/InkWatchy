@@ -17,7 +17,7 @@ int wifiSignalLast;
 
 void wifiOnBtn()
 {
-    turnOnWifiRegular();
+    turnOnWifiManual();
     vibrateMotor(VIBRATION_ACTION_TIME);
 }
 

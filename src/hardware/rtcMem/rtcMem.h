@@ -43,6 +43,10 @@ struct rtcMem
     // Wifi logic
     uint64_t lastSyncUnix;
     uint64_t lastTryUnix;
+    bool manualWifiEnabled : 1;
+#if BITCOIN_MODULE
+    uint64_t lastBtcManualSyncUnix;
+#endif
 // Ntp
 // Time drift correction
 #if TIME_DRIFT_CORRECTION

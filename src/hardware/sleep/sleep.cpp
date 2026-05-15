@@ -229,6 +229,12 @@ void manageSleep()
                 // debugLog("sleepDelayMs is after change:" + String(sleepDelayMs));
                 return;
             }
+            if (rM.manualWifiEnabled == true && wifiStatusWrap() != WifiOff)
+            {
+                debugLog("Manual wifi is on, waiting...");
+                resetSleepDelay();
+                return;
+            }
 #if WIFI_TOOL
             if (wifiToolRunning == true)
             {

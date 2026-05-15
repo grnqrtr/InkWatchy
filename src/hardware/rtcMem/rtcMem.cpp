@@ -45,6 +45,10 @@ RTC_DATA_ATTR rtcMem rM = {
     // Wifi logic
     .lastSyncUnix = 0,
     .lastTryUnix = 0,
+    .manualWifiEnabled = false,
+#if BITCOIN_MODULE
+    .lastBtcManualSyncUnix = 0,
+#endif
 // Ntp
 // Time drift correction
 #if TIME_DRIFT_CORRECTION
