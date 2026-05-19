@@ -68,7 +68,7 @@ const watchfaceDef szybetShades = {
 #endif
 
 #if WATCHFACE_ANALOG_SHARP_SZYBET
-const watchfaceDef szybetAnalogConway = {
+const watchfaceDef szybetAnalogSharp = {
     .manager = wfmTwo,
     .name = "Szybet's Analog sharp",
     .data = (genPointer)&analogConwayDef,
@@ -135,8 +135,8 @@ const watchfaceDef *watchfacesList[WATCHFACE_COUNT] = {
 #else
     &noWatchFace,
 #endif
-#if WATCHFACE_SHADES_SZYBET
-    &szybetAnalogConway,
+#if WATCHFACE_ANALOG_SHARP_SZYBET
+    &szybetAnalogSharp,
 #else
     &noWatchFace,
 #endif
