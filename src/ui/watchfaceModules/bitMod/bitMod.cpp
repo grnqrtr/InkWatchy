@@ -163,6 +163,10 @@ void wfBitrequestShow(buttonState button, bool *showBool)
 int getBitcoinPriceForUnix(uint64_t unixTime)
 {
     HTTPClient http;
+    // Modem-sleep power saving makes TLS handshakes slow; the 5s default
+    // times out (httpCode -1) even on a working link.
+    http.setTimeout(25000);
+    http.setConnectTimeout(15000);
     http.addHeader("Content-Type", "application/json");
     // http.addHeader("User-Agent", "YourUserAgent");
     String binanceUrl = String(BINANCE_BASEURL) + String((unixTime - 1800) * 1000); // - 30m as we can make it for this exact second
@@ -223,6 +227,9 @@ void bitcoinSync(uint8_t tries)
     String height = "";
     {
         HTTPClient http;
+        // See above: needs generous timeouts with modem sleep enabled.
+        http.setTimeout(25000);
+        http.setConnectTimeout(15000);
         http.begin(String(MEMPOOL_BASEURL) + "/blocks/tip/height");
         int httpCode = http.GET();
         debugLog("Height http code: " + String(httpCode));
