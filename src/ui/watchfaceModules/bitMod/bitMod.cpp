@@ -5,8 +5,14 @@
 
 #include <HTTPClient.h>
 
+#if SYNC_PROXY
+// Plaintext proxy on the phone hotspot; serves the same paths (see config).
+#define MEMPOOL_BASEURL SYNC_PROXY_BASE
+#define BINANCE_BASEURL SYNC_PROXY_BASE "/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=1&startTime="
+#else
 #define MEMPOOL_BASEURL "https://mempool.space/api"
 #define BINANCE_BASEURL "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=1&startTime="
+#endif
 
 bitcoinData btcData = {0};
 
@@ -163,8 +169,8 @@ void wfBitrequestShow(buttonState button, bool *showBool)
 int getBitcoinPriceForUnix(uint64_t unixTime)
 {
     HTTPClient http;
-    // Modem-sleep power saving makes TLS handshakes slow; the 5s default
-    // times out (httpCode -1) even on a working link.
+    // Generous limits: modem-sleep power saving slows handshakes and the
+    // default 5s timeout aborts slow-but-working links.
     http.setTimeout(25000);
     http.setConnectTimeout(15000);
     http.addHeader("Content-Type", "application/json");
@@ -227,7 +233,7 @@ void bitcoinSync(uint8_t tries)
     String height = "";
     {
         HTTPClient http;
-        // See above: needs generous timeouts with modem sleep enabled.
+        // Same generous limits as the price request.
         http.setTimeout(25000);
         http.setConnectTimeout(15000);
         http.begin(String(MEMPOOL_BASEURL) + "/blocks/tip/height");

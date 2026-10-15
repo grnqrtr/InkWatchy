@@ -78,7 +78,7 @@ void tryToConnectWifi()
             debugLog("Skipping wifi id: " + String(i) + " because bad length");
             continue;
         }
-        debugLog("Trying to connect to wifi number: " + String(i) + " so: " + String(wifiCredStatic[i]->ssid) + " " + String(wifiCredStatic[i]->password));
+        debugLog("Trying to connect to wifi number: " + String(i));
         softStartDelay();
 
         setWifiCountryCode();

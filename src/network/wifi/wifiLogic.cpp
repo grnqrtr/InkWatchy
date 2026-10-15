@@ -8,12 +8,15 @@
 void wifiSyncModules()
 {
     softStartDelay();
-#if WEATHER_INFO
-    syncWeather();
-#endif
 #if BITCOIN_MODULE
-    softStartDelay();
+    // Bitcoin first: with SYNC_PROXY off it uses TLS, which needs a large
+    // contiguous heap block; the weather sync fragments the heap, so plain
+    // HTTP weather goes second either way.
     bitcoinSync(1);
+#endif
+#if WEATHER_INFO
+    softStartDelay();
+    syncWeather();
 #endif
 }
 

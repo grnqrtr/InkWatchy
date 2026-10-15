@@ -268,6 +268,12 @@ The default is this:
 #define BITCOIN_MODULE 0
 #define SMALL_BTC_MODULE 1 // At default, show the small btc module mode, if 0 show the bigger one
 #define BITCOIN_SYNC_TRIES 3
+// Route sync APIs through a plaintext proxy (e.g. phone hotspot gateway)
+// instead of HTTPS: device TLS needs ~32KB contiguous heap that this build
+// cannot provide, so all HTTPS syncs fail. The proxy (see repo notes)
+// serves the same paths over plain HTTP. 0 = stock upstream hosts.
+#define SYNC_PROXY 0
+#define SYNC_PROXY_BASE "http://192.168.43.1:8080" // Phone hotspot gateway
 #define CONWAY_MODULE 0                  // Conway module. to make it enabled CONWAY itself needs to be enabled
 #define CONWAY_MODULE_GRID_PERCANTAGE 50 // Percentage of initial grid filling
 
