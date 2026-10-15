@@ -1,4 +1,5 @@
 #include "wifiDebug.h"
+#include "rtcMem.h"
 
 int statusLine;
 int ipLine;
@@ -33,14 +34,28 @@ void wifiNtpBtn()
     vibrateMotor(VIBRATION_ACTION_TIME);
 }
 
+void wifiKeepOnBtn()
+{
+    rM.keepWifiOn = true;
+    turnOnWifiKeepOn();
+    vibrateMotor(VIBRATION_ACTION_TIME);
+}
+
+void wifiKeepOffBtn()
+{
+    rM.keepWifiOn = false;
+    turnOffWifi();
+    vibrateMotor(VIBRATION_ACTION_TIME);
+}
+
 void initWifiDebugDisplay()
 {
     init_general_page(6);
     general_page_set_title(DEBUG_MENU_WIFI);
     genpage_set_center();
 
-    GeneralPageButton button[] = {GeneralPageButton{DEBUG_WIFI_ON, wifiOnBtn}, GeneralPageButton{DEBUG_WIFI_OFF, wifiOffBtn}, GeneralPageButton("NTP", wifiNtpBtn)};
-    general_page_set_buttons(button, 3);
+    GeneralPageButton button[] = {GeneralPageButton{DEBUG_WIFI_ON, wifiOnBtn}, GeneralPageButton{DEBUG_WIFI_OFF, wifiOffBtn}, GeneralPageButton("NTP", wifiNtpBtn), GeneralPageButton("KeepOn", wifiKeepOnBtn), GeneralPageButton("KeepOff", wifiKeepOffBtn)};
+    general_page_set_buttons(button, 5);
 
     genpage_add(DEBUG_WIFI_MAC_ADDRESS);
     if (wifiStatusWrap() != wifiStatusSimple::WifiOff)

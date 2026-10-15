@@ -71,6 +71,8 @@ void loop()
 #if !DEBUG || !NO_SYNC
     regularSync();
 #endif
+    // Independent of SYNC_WIFI/NO_SYNC: only acts while the user toggle is set
+    keepWifiAlive();
   }
 #if TEMP_CHECKS_ENABLED
   tempChecker();

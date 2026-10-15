@@ -196,6 +196,8 @@ struct rtcMem
     bool isBtcDataNew : 1;
     bool smallBtcData : 1;
     uint btcLastUpdate;
+    // Keep-wifi-on mode, toggled in the wifi debug page. Resets on power loss.
+    bool keepWifiOn : 1;
 // wFBook
 #if BOOK_MODULE_ENABLED
     wfModule wfBook;

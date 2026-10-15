@@ -1,6 +1,9 @@
 #include "wifiLogic.h"
 #include "rtcMem.h"
 
+// Keep-wifi-on mode: full sync (NTP + weather + bitcoin) cadence
+#define WIFI_KEEP_ON_SYNC_MS 300000 // 5 minutes
+
 
 void wifiSyncModules()
 {
@@ -67,6 +70,40 @@ void turnOnWifiPersistent()
 void turnOnWifiKindOfPersistent()
 {
     createWifiTask(WIFI_CONNECTION_TRIES_PERSISTENT, wifiKindOfPersistent, WIFI_PRIORITY_PERSISTENT);
+}
+
+void wifiKeepOn()
+{
+    debugLog("Launching wifi keep-on");
+    while (rM.keepWifiOn == true && WiFi.status() == WL_CONNECTED)
+    {
+        syncNtp(false);
+        wifiSyncModules();
+        rM.lastSyncUnix = getUnixTime(timeRTCLocal);
+        // Wait in 1s steps so turning the toggle off reacts within ~1s
+        int waitedMs = 0;
+        while (waitedMs < WIFI_KEEP_ON_SYNC_MS && rM.keepWifiOn == true && WiFi.status() == WL_CONNECTED)
+        {
+            delayTask(1000);
+            waitedMs = waitedMs + 1000;
+        }
+    }
+    debugLog("Keep-wifi-on loop ended, the task wrapper turns wifi off");
+}
+
+void turnOnWifiKeepOn()
+{
+    // Connect once, then re-sync while the toggle is set
+    createWifiTask(WIFI_CONNECTION_TRIES_PERSISTENT, wifiKeepOn, WIFI_PRIORITY_PERSISTENT);
+}
+
+void keepWifiAlive()
+{
+    if (rM.keepWifiOn == true && isWifiTaskCheck() == false)
+    {
+        debugLog("Keep-wifi-on is set but no task runs, (re)starting");
+        turnOnWifiKeepOn();
+    }
 }
 
 void wifiOnlyNtp() {

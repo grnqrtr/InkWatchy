@@ -196,6 +196,7 @@ RTC_DATA_ATTR rtcMem rM = {
     .smallBtcData = SMALL_BTC_MODULE,
     .btcLastUpdate = 0,
 #endif
+    .keepWifiOn = false,
 // wFBook
 #if BOOK_MODULE_ENABLED
     .wfBook = {
