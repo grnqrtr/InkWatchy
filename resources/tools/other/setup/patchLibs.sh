@@ -18,8 +18,13 @@ sed -i "s/^${wrong_st}.*/$new_str/" "$rtc_path"
 om_path="../../.pio/libdeps/$pio_env/open-meteo-arduino/src/OpenMeteo.cpp"
 # Drop any leftover diagnostic line from earlier debugging.
 sed -i '/SYNC_DIAG weather HTTP/d' "$om_path"
-proxy_base=$(grep -E '^#define SYNC_PROXY_BASE' ../../src/defines/config.h | sed 's/.*SYNC_PROXY_BASE *//; s/"//g' | tr -d ' \t\r\n')
+# Take only the first quoted string so trailing // comments never glue on.
+proxy_base=$(grep -E '^#define SYNC_PROXY_BASE' ../../src/defines/config.h | grep -o '"[^"]*"' | head -1 | tr -d '"')
 proxy_base=${proxy_base:-http://192.168.43.1:8080}
+# Normalize first: a previous proxy base (e.g. after the phone's DHCP IP
+# changed) matches neither the stock hosts nor the current base, so reset
+# any proxy-style URL to stock before applying the current setting.
+sed -i -E "s|http://[^\" ]*/v1/forecast|http://api.open-meteo.com/v1/forecast|g; s|http://[^\" ]*/v1/air-quality|http://air-quality-api.open-meteo.com/v1/air-quality|g" "$om_path"
 if grep -qE '^#define SYNC_PROXY 1( |$)' ../../src/defines/config.h; then
     # Same /v1/... paths, phone host. The proxy routes /v1/forecast to the
     # forecast API and /v1/air-quality to the air-quality API.
