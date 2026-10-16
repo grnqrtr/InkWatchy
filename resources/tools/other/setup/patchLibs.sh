@@ -18,6 +18,8 @@ sed -i "s/^${wrong_st}.*/$new_str/" "$rtc_path"
 om_path="../../.pio/libdeps/$pio_env/open-meteo-arduino/src/OpenMeteo.cpp"
 # Drop any leftover diagnostic line from earlier debugging.
 sed -i '/SYNC_DIAG weather HTTP/d' "$om_path"
+# Surface the lib's own parse diagnostics on the raw serial stream.
+sed -i 's/#define OM_LOGS_ENABLED 0/#define OM_LOGS_ENABLED 1/' "../../.pio/libdeps/$pio_env/open-meteo-arduino/src/OpenMeteo.h"
 # Take only the first quoted string so trailing // comments never glue on.
 proxy_base=$(grep -E '^#define SYNC_PROXY_BASE' ../../src/defines/config.h | grep -o '"[^"]*"' | head -1 | tr -d '"')
 proxy_base=${proxy_base:-http://192.168.43.1:8080}

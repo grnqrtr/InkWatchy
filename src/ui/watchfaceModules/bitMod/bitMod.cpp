@@ -197,7 +197,7 @@ int getBitcoinPriceForUnix(uint64_t unixTime)
 
         if (error.code() != DeserializationError::Ok)
         {
-            debugLog("Failed to deserialise");
+            debugLog("Failed to deserialise: " + String(error.c_str()) + " input_len=" + String(output.length()) + " heap=" + String(ESP.getFreeHeap()) + " largest=" + String(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
             return 0;
         }
 
