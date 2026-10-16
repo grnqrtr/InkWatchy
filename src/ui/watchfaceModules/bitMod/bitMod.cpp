@@ -275,6 +275,9 @@ void bitcoinSync(uint8_t tries)
 
     if(btcData.height == 0 || btcData.price == 0 || price1h == 0 || price24h == 0 || price7d == 0 || price30d == 0) {
         debugLog("Running again, next try: " + String(tries + 1));
+        // Yield so failing retries can't starve lower-priority tasks
+        // (scom serial task, main loop) into apparent silence.
+        delayTask(2000);
         bitcoinSync(tries + 1);
     } else {
         debugLog("Bitcoin is fine!");
