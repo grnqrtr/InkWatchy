@@ -192,17 +192,25 @@ int getBitcoinPriceForUnix(uint64_t unixTime)
         output = output.substring(1, output.length() - 1);
         debugLog("Received from binance: " + output);
 
-        JsonDocument doc;
-        DeserializationError error = deserializeJson(doc, output);
-
-        if (error.code() != DeserializationError::Ok)
+        // No ArduinoJson here on purpose: with the heap this fragmented
+        // during syncs (largest free block ~768B observed), parsing even a
+        // 170B payload fails with NoMemory. Index parsing needs no heap.
+        // Kline format: [openTime,"open","high","low","close",...]
+        int c1 = output.indexOf(',');
+        int c2 = output.indexOf(',', c1 + 1);
+        int c3 = output.indexOf(',', c2 + 1);
+        int c4 = output.indexOf(',', c3 + 1);
+        float two = 0, thri = 0;
+        if (c1 > 0 && c2 > c1 && c3 > c2 && c4 > c3)
         {
-            debugLog("Failed to deserialise: " + String(error.c_str()) + " input_len=" + String(output.length()) + " heap=" + String(ESP.getFreeHeap()) + " largest=" + String(heap_caps_get_largest_free_block(MALLOC_CAP_8BIT)));
+            two = output.substring(c2 + 2, c3 - 1).toFloat();
+            thri = output.substring(c3 + 2, c4 - 1).toFloat();
+        }
+        if (two == 0 || thri == 0)
+        {
+            debugLog("Failed to parse kline");
             return 0;
         }
-
-        float two = String(doc[2]).toFloat();
-        float thri = String(doc[3]).toFloat();
         debugLog("two is: " + String(two));
         int average = int(round((two + thri) / 2));
         debugLog("Final average is: " + String(average));
@@ -282,6 +290,9 @@ void bitcoinSync(uint8_t tries)
     } else {
         debugLog("Bitcoin is fine!");
         btcData.btcLastSyncUnix = getUnixTime(timeRTCLocal);
+        // Without this the module never redraws with the new data: the
+        // show-check only refreshes on new data or a changed hour-diff.
+        rM.isBtcDataNew = true;
         saveBitcoinData();
     }
 }
