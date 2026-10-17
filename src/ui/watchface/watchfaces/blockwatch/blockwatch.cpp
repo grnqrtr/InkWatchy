@@ -5,15 +5,19 @@
 #include "moscowBmp.h"
 // bitMod.h (and getBitcoinSnapshot) is pulled in through defines.h when BITCOIN_MODULE is set.
 
-// Consider the bitcoin data "live" when it synced within this window.
-#define BLOCKWATCH_LIVE_SECONDS 3600
-// Target block interval used for the progress bar and offline extrapolation.
+// The dot goes hollow as soon as a sync cycle fails, or once the data is older
+// than this (covers the case where no sync is even attempted).
+#define BLOCKWATCH_STALE_SECONDS 600
+// Target block interval. The bar fills one box per minute for the first 10
+// minutes, then hollows their centres over the following 10 (blocks average
+// ~10 minutes, so this shows "running late" without claiming a new block).
 #define BLOCKWATCH_BLOCK_SECONDS 600
-// Cap offline extrapolation so a long-offline watch doesn't run away.
-#define BLOCKWATCH_MAX_EXTRAPOLATE 6
+#define BLOCKWATCH_SQUARES 10
 
-static const char *const BW_BLOCK_FONTS[] = {"inkfield/JackInput40", "Mono33", "shades/RampartOne30", "taychron/Mono30", "JackInput17"};
-static const char *const BW_MOSCOW_FONTS[] = {"Mono33", "taychron/Mono30", "JackInput17"};
+// "Square27" is the original BLOCKWATCH font, installed in the watch filesystem.
+// The rest are fallbacks so a too-wide value (e.g. a 7-digit height) still fits.
+static const char *const BW_BLOCK_FONTS[] = {"Square27", "Mono33", "shades/RampartOne30", "taychron/Mono30", "JackInput17"};
+static const char *const BW_MOSCOW_FONTS[] = {"Square27", "Mono33", "taychron/Mono30", "JackInput17"};
 
 // Sum of the glyph advances, which is exactly what print() will consume.
 static uint16_t bwTextWidth(const GFXfont *f, const String &text)
@@ -69,16 +73,25 @@ static void bwReadData(int *height, int *price, bool *available, bool *live)
     *price = d.price;
     *available = avail;
     uint64_t now = getUnixTime(timeRTCLocal);
-    if (avail && d.btcLastSyncUnix > 0 && now >= (uint64_t)d.btcLastSyncUnix)
+    // The face shows the height, so freshness tracks the height-only poll.
+    long lastHeightSync = rM.btcLastHeightSyncUnix;
+    if (avail && lastHeightSync > 0 && now >= (uint64_t)lastHeightSync)
     {
-        *live = (now - (uint64_t)d.btcLastSyncUnix) <= BLOCKWATCH_LIVE_SECONDS;
+        *live = (now - (uint64_t)lastHeightSync) <= BLOCKWATCH_STALE_SECONDS;
+    }
+    // A failed height sync marks the data stale immediately, even if still fresh.
+    if (rM.isBtcHeightFailed)
+    {
+        *live = false;
     }
 #endif
 }
 
-// Computes the displayed block height (with offline extrapolation) and the
-// number of filled squares (0..9) of the progress toward the next block.
-static void bwBlockProgress(int realHeight, int *filled, int *displayHeight)
+// Computes the block height to show (always the last known one, never a future
+// block) plus the progress since it was seen: `solid` boxes are filled black
+// (one per minute for the first 10) and `hollow` of those have had their centre
+// cleared to white (one per minute for the next 10). Both cap at 10.
+static void bwBlockProgress(int realHeight, int *solid, int *hollow, int *displayHeight)
 {
     uint64_t now = getUnixTime(timeRTCLocal);
 
@@ -92,34 +105,35 @@ static void bwBlockProgress(int realHeight, int *filled, int *displayHeight)
         rM.blockwatch.heightEpochUnix = now;
     }
 
-    uint64_t elapsed = now - rM.blockwatch.heightEpochUnix;
     int height = (realHeight > 0) ? realHeight : rM.blockwatch.lastHeight;
 
-    uint8_t extra = 0;
-    while (elapsed >= BLOCKWATCH_BLOCK_SECONDS && extra < BLOCKWATCH_MAX_EXTRAPOLATE)
+    // One box per minute; a new block (a changed height) resets the anchor above.
+    uint64_t elapsed = now - rM.blockwatch.heightEpochUnix;
+    int boxes = (int)((elapsed * BLOCKWATCH_SQUARES) / BLOCKWATCH_BLOCK_SECONDS);
+
+    int s = boxes;
+    if (s > BLOCKWATCH_SQUARES)
     {
-        height++;
-        extra++;
-        elapsed -= BLOCKWATCH_BLOCK_SECONDS;
-        rM.blockwatch.lastHeight = height;
-        rM.blockwatch.heightEpochUnix += BLOCKWATCH_BLOCK_SECONDS;
+        s = BLOCKWATCH_SQUARES;
+    }
+    int h = boxes - BLOCKWATCH_SQUARES;
+    if (h < 0)
+    {
+        h = 0;
+    }
+    else if (h > BLOCKWATCH_SQUARES)
+    {
+        h = BLOCKWATCH_SQUARES;
     }
 
-    int f = (int)((elapsed * 10) / BLOCKWATCH_BLOCK_SECONDS);
-    if (f > 9)
-    {
-        f = 9;
-    }
     *displayHeight = height;
-    *filled = f;
+    *solid = s;
+    *hollow = h;
 }
 
-static void bwDrawStatus(bool live)
+// Small dot in the top-right corner showing whether the bitcoin data is fresh.
+static void bwDrawLiveDot(bool live)
 {
-    setTextSize(1);
-    setFont(getFont("UbuntuMono10"));
-    writeTextReplaceBack(getHourMinute(timeRTCLocal), 2, 12);
-
     if (live)
     {
         dis->fillCircle(192, 8, 4, SCBlack);
@@ -142,10 +156,11 @@ static void bwDrawFace()
     dis->fillRect(0, 0, 200, 200, SCWhite);
 
     String value;
-    int filled = 0;
+    int solid = 0;
+    int hollow = 0;
     const char *const *fontList = BW_BLOCK_FONTS;
     uint8_t fontCount = sizeof(BW_BLOCK_FONTS) / sizeof(BW_BLOCK_FONTS[0]);
-    int16_t baseline = 128;
+    int16_t baseline = 118;
 
     if (moscow)
     {
@@ -164,7 +179,7 @@ static void bwDrawFace()
     else
     {
         int dispHeight = 0;
-        bwBlockProgress(realHeight, &filled, &dispHeight);
+        bwBlockProgress(realHeight, &solid, &hollow, &dispHeight);
         value = String(dispHeight);
     }
 
@@ -184,14 +199,21 @@ static void bwDrawFace()
 
     if (!moscow)
     {
-        int squares = 10;
+        int squares = BLOCKWATCH_SQUARES;
         int gap = 4;
         int side = (200 / squares) - gap; // 16
         int x = gap / 2;                  // 2
         int y = 174;
+        int inset = 5; // white centre of a "hollowed" box
         for (int i = 0; i < squares; i++)
         {
-            if (i < filled)
+            if (i < hollow)
+            {
+                // Filled black, but the centre has been cleared to white.
+                dis->fillRect(x, y, side, side, SCBlack);
+                dis->fillRect(x + inset, y + inset, side - 2 * inset, side - 2 * inset, SCWhite);
+            }
+            else if (i < solid)
             {
                 dis->fillRect(x, y, side, side, SCBlack);
             }
@@ -203,7 +225,7 @@ static void bwDrawFace()
         }
     }
 
-    bwDrawStatus(live);
+    bwDrawLiveDot(live);
 
     // Battery as a thin bar along the bottom edge.
     dis->fillRect(0, 198, 200, 2, SCWhite);
