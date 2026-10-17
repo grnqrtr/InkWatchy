@@ -8,9 +8,9 @@
 // The dot goes hollow as soon as a sync cycle fails, or once the data is older
 // than this (covers the case where no sync is even attempted).
 #define BLOCKWATCH_STALE_SECONDS 600
-// Target block interval. The bar fills one box per minute for the first 10
-// minutes, then hollows their centres over the following 10 (blocks average
-// ~10 minutes, so this shows "running late" without claiming a new block).
+// Target block interval. The bottom row has one box per minute; after a full
+// 10 minutes the row resets and a "bar" is added above it, one more bar for
+// each further 10 minutes. So lateness reads as bars*10 + boxes minutes.
 #define BLOCKWATCH_BLOCK_SECONDS 600
 #define BLOCKWATCH_SQUARES 10
 
@@ -87,11 +87,11 @@ static void bwReadData(int *height, int *price, bool *available, bool *live)
 #endif
 }
 
-// Computes the block height to show (always the last known one, never a future
-// block) plus the progress since it was seen: `solid` boxes are filled black
-// (one per minute for the first 10) and `hollow` of those have had their centre
-// cleared to white (one per minute for the next 10). Both cap at 10.
-static void bwBlockProgress(int realHeight, int *solid, int *hollow, int *displayHeight)
+// Computes the last known height (never a future block) plus how long ago it
+// was seen. The 10 boxes fill one per minute within the current 10 minutes;
+// each completed 10 minutes adds a `bar` above the row, so bars*10 + filled is
+// the whole number of minutes since the block.
+static void bwBlockProgress(int realHeight, int *filled, int *bars, int *displayHeight)
 {
     uint64_t now = getUnixTime(timeRTCLocal);
 
@@ -107,28 +107,23 @@ static void bwBlockProgress(int realHeight, int *solid, int *hollow, int *displa
 
     int height = (realHeight > 0) ? realHeight : rM.blockwatch.lastHeight;
 
-    // One box per minute; a new block (a changed height) resets the anchor above.
-    uint64_t elapsed = now - rM.blockwatch.heightEpochUnix;
-    int boxes = (int)((elapsed * BLOCKWATCH_SQUARES) / BLOCKWATCH_BLOCK_SECONDS);
+    int minute = (int)((now - rM.blockwatch.heightEpochUnix) / 60);
 
-    int s = boxes;
-    if (s > BLOCKWATCH_SQUARES)
+    int f = 0;
+    int b = 0;
+    if (minute > 0)
     {
-        s = BLOCKWATCH_SQUARES;
+        f = ((minute - 1) % BLOCKWATCH_SQUARES) + 1;
+        b = (minute - 1) / BLOCKWATCH_SQUARES;
     }
-    int h = boxes - BLOCKWATCH_SQUARES;
-    if (h < 0)
+    if (b > BLOCKWATCH_SQUARES)
     {
-        h = 0;
-    }
-    else if (h > BLOCKWATCH_SQUARES)
-    {
-        h = BLOCKWATCH_SQUARES;
+        b = BLOCKWATCH_SQUARES;
     }
 
     *displayHeight = height;
-    *solid = s;
-    *hollow = h;
+    *filled = f;
+    *bars = b;
 }
 
 // Small dot in the top-right corner showing whether the bitcoin data is fresh.
@@ -156,8 +151,8 @@ static void bwDrawFace()
     dis->fillRect(0, 0, 200, 200, SCWhite);
 
     String value;
-    int solid = 0;
-    int hollow = 0;
+    int filled = 0;
+    int bars = 0;
     const char *const *fontList = BW_BLOCK_FONTS;
     uint8_t fontCount = sizeof(BW_BLOCK_FONTS) / sizeof(BW_BLOCK_FONTS[0]);
     int16_t baseline = 118;
@@ -179,12 +174,14 @@ static void bwDrawFace()
     else
     {
         int dispHeight = 0;
-        bwBlockProgress(realHeight, &solid, &hollow, &dispHeight);
+        bwBlockProgress(realHeight, &filled, &bars, &dispHeight);
         value = String(dispHeight);
     }
 
     setTextSize(1);
-    const GFXfont *valueFont = bwPickFont(value, fontList, fontCount, 190);
+    // 196 leaves Square27's widest 6-digit height (192) fitting, so the font
+    // never switches just because the value happens to contain no '1'.
+    const GFXfont *valueFont = bwPickFont(value, fontList, fontCount, 196);
     setFont(valueFont);
     dis->setTextWrap(false);
     dis->setTextColor(SCBlack);
@@ -202,26 +199,27 @@ static void bwDrawFace()
         int squares = BLOCKWATCH_SQUARES;
         int gap = 4;
         int side = (200 / squares) - gap; // 16
-        int x = gap / 2;                  // 2
-        int y = 174;
-        int inset = 5; // white centre of a "hollowed" box
+        int x0 = gap / 2;                 // 2
+        int boxY = 174;
+        int barH = 8;
+        int barY = boxY - gap - barH; // a bar sits above each box, with a gap
         for (int i = 0; i < squares; i++)
         {
-            if (i < hollow)
+            int x = x0 + i * (gap + side);
+            // One extra bar per completed 10 minutes.
+            if (i < bars)
             {
-                // Filled black, but the centre has been cleared to white.
-                dis->fillRect(x, y, side, side, SCBlack);
-                dis->fillRect(x + inset, y + inset, side - 2 * inset, side - 2 * inset, SCWhite);
+                dis->fillRect(x, barY, side, barH, SCBlack);
             }
-            else if (i < solid)
+            // One box per minute within the current 10.
+            if (i < filled)
             {
-                dis->fillRect(x, y, side, side, SCBlack);
+                dis->fillRect(x, boxY, side, side, SCBlack);
             }
             else
             {
-                dis->drawRect(x, y, side, side, SCBlack);
+                dis->drawRect(x, boxY, side, side, SCBlack);
             }
-            x += gap + side;
         }
     }
 
