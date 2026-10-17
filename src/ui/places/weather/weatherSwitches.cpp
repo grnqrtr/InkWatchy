@@ -217,95 +217,93 @@ OM_HourlyForecastReturn generalWeatherGetData()
     String weatherDay = String(weatherDayChoosed);
     debugLog("Showing weather data for day: " + weatherDay);
 
-    bufSize weatherData = fsGetBlob(String(dateToUnix(weatherDay)), String(WEATHER_HOURLY_DIR) + "/");
-    debugLog("Weather size is: " + String(weatherData.size) + " While is should be: " + String(sizeof(OM_HourlyForecast)));
     OM_HourlyForecastReturn forecast = {};
-    if (weatherData.size != sizeof(OM_HourlyForecast))
+    bool weatherFine = fsGetBlobInto(String(dateToUnix(weatherDay)), (uint8_t *)&forecast.data, sizeof(OM_HourlyForecast), String(WEATHER_HOURLY_DIR) + "/");
+    debugLog("Weather size is: " + String(weatherFine ? sizeof(OM_HourlyForecast) : 0) + " While is should be: " + String(sizeof(OM_HourlyForecast)));
+    if (weatherFine == false)
     {
         debugLog("Weather data is bad.");
-        free(weatherData.buf);
         overwriteSwitch(textDialog);
         showTextDialog(WEATHER_CORRUPTED, true);
         forecast.fine = false;
         return forecast;
     }
-    memcpy(&forecast.data, weatherData.buf, weatherData.size);
-    free(weatherData.buf);
 
     forecast.fine = true;
     return forecast;
 }
 
+static std::mutex weatherReadMutex;
+static OM_HourlyForecast weatherDataWork;
+
 OM_OneHourWeather weatherGetDataHourly(uint8_t hourOffset)
 {
+    std::lock_guard<std::mutex> lock(weatherReadMutex);
     String unixTimeWeather = String(simplifyUnix(getUnixTime(timeRTCLocal)));
     debugLog("Getting weather for unix: " + unixTimeWeather);
-    bufSize weatherData = fsGetBlob(unixTimeWeather, String(WEATHER_HOURLY_DIR) + "/");
-    debugLog("Weather size is: " + String(weatherData.size) + " While is should be: " + String(sizeof(OM_HourlyForecast)));
+    bool weatherFine = fsGetBlobInto(unixTimeWeather, (uint8_t *)&weatherDataWork, sizeof(OM_HourlyForecast), String(WEATHER_HOURLY_DIR) + "/");
+    debugLog("Weather size is: " + String(weatherFine ? sizeof(OM_HourlyForecast) : 0) + " While is should be: " + String(sizeof(OM_HourlyForecast)));
     OM_OneHourWeather forecast = {0};
-    if (weatherData.size != sizeof(OM_HourlyForecast))
+    if (weatherFine == false)
     {
         debugLog("Weather data is bad.");
-        free(weatherData.buf);
         forecast.fine = false;
         return forecast;
     }
-    OM_HourlyForecast *weatherDataWork = (OM_HourlyForecast *)weatherData.buf;
     int64_t unixNow = getUnixTime(timeRTCUTC0) + (60 * 60) * hourOffset; // Using utc0 as the stored data from open meteo uses utc0 unix timestamps for time
     int64_t smallestDiffUnix = 0;
     uint8_t smallestDiffIndex = 0;
     for (int i = 0; i < OM_WEATHER_MAX_HOURS; i++)
     {
-        if (llabs(unixNow - (int64_t)weatherDataWork->hourly_time[i]) < llabs(unixNow - smallestDiffUnix))
+        if (llabs(unixNow - (int64_t)weatherDataWork.hourly_time[i]) < llabs(unixNow - smallestDiffUnix))
         {
-            smallestDiffUnix = weatherDataWork->hourly_time[i];
+            smallestDiffUnix = weatherDataWork.hourly_time[i];
             smallestDiffIndex = i;
         }
         // debugLog("Current time: " + String(unixNow) + " choosed time: " + String(weatherDataWork->hourly_time[i]) + " diff: " + String(llabs(unixNow - weatherDataWork->hourly_time[i])));
     }
-    debugLog("FINAL time: " + String(unixNow) + " choosed time: " + String(weatherDataWork->hourly_time[smallestDiffIndex]) + " diff: " + String(llabs(unixNow - weatherDataWork->hourly_time[smallestDiffIndex])) + " so it's index is: " + String(smallestDiffIndex));
+    debugLog("FINAL time: " + String(unixNow) + " choosed time: " + String(weatherDataWork.hourly_time[smallestDiffIndex]) + " diff: " + String(llabs(unixNow - weatherDataWork.hourly_time[smallestDiffIndex])) + " so it's index is: " + String(smallestDiffIndex));
 
-    forecast.hourly_time = weatherDataWork->hourly_time[smallestDiffIndex];
-    forecast.temp = weatherDataWork->temp[smallestDiffIndex];
-    forecast.humidity = weatherDataWork->humidity[smallestDiffIndex];
-    forecast.apparent_temp = weatherDataWork->apparent_temp[smallestDiffIndex];
-    forecast.pressure = weatherDataWork->pressure[smallestDiffIndex];
-    forecast.precipitation = weatherDataWork->precipitation[smallestDiffIndex];
-    forecast.cloud_cover = weatherDataWork->cloud_cover[smallestDiffIndex];
-    forecast.visibility = weatherDataWork->visibility[smallestDiffIndex];
-    forecast.wind_speed = weatherDataWork->wind_speed[smallestDiffIndex];
-    forecast.wind_deg = weatherDataWork->wind_deg[smallestDiffIndex];
-    forecast.wind_gust = weatherDataWork->wind_gust[smallestDiffIndex];
-    forecast.weather_code = weatherDataWork->weather_code[smallestDiffIndex];
-    forecast.wet_bulb = weatherDataWork->wet_bulb_temperature_2m[smallestDiffIndex];
-    forecast.cape = weatherDataWork->cape[smallestDiffIndex];
-    forecast.is_day = weatherDataWork->is_day[smallestDiffIndex];
-    forecast.uv_index = weatherDataWork->uv_index[smallestDiffIndex];
-    forecast.uv_index_clear_sky = weatherDataWork->uv_index_clear_sky[smallestDiffIndex];
+    forecast.hourly_time = weatherDataWork.hourly_time[smallestDiffIndex];
+    forecast.temp = weatherDataWork.temp[smallestDiffIndex];
+    forecast.humidity = weatherDataWork.humidity[smallestDiffIndex];
+    forecast.apparent_temp = weatherDataWork.apparent_temp[smallestDiffIndex];
+    forecast.pressure = weatherDataWork.pressure[smallestDiffIndex];
+    forecast.precipitation = weatherDataWork.precipitation[smallestDiffIndex];
+    forecast.cloud_cover = weatherDataWork.cloud_cover[smallestDiffIndex];
+    forecast.visibility = weatherDataWork.visibility[smallestDiffIndex];
+    forecast.wind_speed = weatherDataWork.wind_speed[smallestDiffIndex];
+    forecast.wind_deg = weatherDataWork.wind_deg[smallestDiffIndex];
+    forecast.wind_gust = weatherDataWork.wind_gust[smallestDiffIndex];
+    forecast.weather_code = weatherDataWork.weather_code[smallestDiffIndex];
+    forecast.wet_bulb = weatherDataWork.wet_bulb_temperature_2m[smallestDiffIndex];
+    forecast.cape = weatherDataWork.cape[smallestDiffIndex];
+    forecast.is_day = weatherDataWork.is_day[smallestDiffIndex];
+    forecast.uv_index = weatherDataWork.uv_index[smallestDiffIndex];
+    forecast.uv_index_clear_sky = weatherDataWork.uv_index_clear_sky[smallestDiffIndex];
 
-    forecast.dew_point = weatherDataWork->dew_point[smallestDiffIndex];
-    forecast.snow_depth = weatherDataWork->snow_depth[smallestDiffIndex];
+    forecast.dew_point = weatherDataWork.dew_point[smallestDiffIndex];
+    forecast.snow_depth = weatherDataWork.snow_depth[smallestDiffIndex];
     // forecast.vapour_pressure_deficit = weatherDataWork->vapour_pressure_deficit[smallestDiffIndex];
     // forecast.evapotranspiration = weatherDataWork->evapotranspiration[smallestDiffIndex];
-    forecast.lifted_index = weatherDataWork->lifted_index[smallestDiffIndex];
-    forecast.convective_inhibition = weatherDataWork->convective_inhibition[smallestDiffIndex];
-    forecast.precipitation_amount = weatherDataWork->precipitation_amount[smallestDiffIndex];
-    forecast.terrestrial_radiation = weatherDataWork->terrestrial_radiation[smallestDiffIndex];
+    forecast.lifted_index = weatherDataWork.lifted_index[smallestDiffIndex];
+    forecast.convective_inhibition = weatherDataWork.convective_inhibition[smallestDiffIndex];
+    forecast.precipitation_amount = weatherDataWork.precipitation_amount[smallestDiffIndex];
+    forecast.terrestrial_radiation = weatherDataWork.terrestrial_radiation[smallestDiffIndex];
     // forecast.global_tilted_irradiance = weatherDataWork->global_tilted_irradiance[smallestDiffIndex];
     // forecast.direct_normal_irradiance = weatherDataWork->direct_normal_irradiance[smallestDiffIndex];
-    forecast.diffuse_radiation = weatherDataWork->diffuse_radiation[smallestDiffIndex];
-    forecast.direct_radiation = weatherDataWork->direct_radiation[smallestDiffIndex];
+    forecast.diffuse_radiation = weatherDataWork.diffuse_radiation[smallestDiffIndex];
+    forecast.direct_radiation = weatherDataWork.direct_radiation[smallestDiffIndex];
     // forecast.shortwave_radiation = weatherDataWork->shortwave_radiation[smallestDiffIndex];
     // forecast.total_water_vapour = weatherDataWork->total_water_vapour[smallestDiffIndex];
 
     // Daily things!
-    forecast.daily_time = weatherDataWork->daily_time[0];
-    forecast.sunshine = weatherDataWork->sunshine_duration[0];
+    forecast.daily_time = weatherDataWork.daily_time[0];
+    forecast.sunshine = weatherDataWork.sunshine_duration[0];
     // Convert sunrise and sunset to local timezone for watchfaces to use
-    forecast.sunrise = weatherDataWork->sunrise[0] - timeZoneOffset;
-    forecast.sunset = weatherDataWork->sunset[0] - timeZoneOffset;
+    forecast.sunrise = weatherDataWork.sunrise[0] - timeZoneOffset;
+    forecast.sunset = weatherDataWork.sunset[0] - timeZoneOffset;
 
-    free(weatherData.buf);
     forecast.fine = true;
     return forecast;
 }

@@ -45,6 +45,9 @@ RTC_DATA_ATTR rtcMem rM = {
     // Wifi logic
     .lastSyncUnix = 0,
     .lastTryUnix = 0,
+#if WEATHER_INFO
+    .isWeatherDataNew = false,
+#endif
 // Ntp
 // Time drift correction
 #if TIME_DRIFT_CORRECTION

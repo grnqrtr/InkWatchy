@@ -33,6 +33,14 @@ void wManageGsrLaunch(WatchyGSR *gsr, bool init)
     }
 #endif
 
+#if WEATHER_INFO
+    if (rM.isWeatherDataNew == true)
+    {
+        draw = true;
+        rM.isWeatherDataNew = false;
+    }
+#endif
+
     if (useButton() == Menu)
     {
         resetSleepDelay();

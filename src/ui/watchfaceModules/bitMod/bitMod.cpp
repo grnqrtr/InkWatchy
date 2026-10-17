@@ -15,15 +15,36 @@
 #endif
 
 bitcoinData btcData = {0};
+bool btcDataLoaded = false;
+std::mutex btcDataMutex;
 
-void saveBitcoinData()
+uint getBitcoinSyncAgeMinutes(long lastSyncUnix)
 {
-    size_t dataSize = sizeof(bitcoinData);
-    fsSetBlob(CONF_BITCOIN, (uint8_t *)&btcData, dataSize);
-    rM.isBtcDataAvail = true;
+    uint64_t currentUnix = getUnixTime(timeRTCLocal);
+    if (lastSyncUnix <= 0 || currentUnix <= static_cast<uint64_t>(lastSyncUnix))
+    {
+        return 0;
+    }
+    return (currentUnix - static_cast<uint64_t>(lastSyncUnix)) / 60;
 }
 
-void loadBitcoinData()
+bool saveBitcoinData(bitcoinData data)
+{
+    size_t dataSize = sizeof(bitcoinData);
+    if (fsSetBlob(CONF_BITCOIN, (uint8_t *)&data, dataSize) == false)
+    {
+        debugLog("Failed to save bitcoin data; keeping previous snapshot");
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(btcDataMutex);
+    btcData = data;
+    btcDataLoaded = true;
+    rM.isBtcDataAvail = true;
+    return true;
+}
+
+bool loadBitcoinData()
 {
     size_t dataSize = sizeof(bitcoinData);
     bufSize serializedData = fsGetBlob(CONF_BITCOIN);
@@ -32,16 +53,27 @@ void loadBitcoinData()
     if (serializedData.size != dataSize)
     {
         debugLog("Bitcoin data size is wrong");
-        rM.isBtcDataAvail = false;
-        if (serializedData.buf != NULL && serializedData.size != 0)
+        if (serializedData.buf != NULL)
         {
-            debugLog("Freeing bitcoin?");
             free(serializedData.buf);
         }
-        return;
+        std::lock_guard<std::mutex> lock(btcDataMutex);
+        if (btcDataLoaded == false)
+        {
+            rM.isBtcDataAvail = false;
+        }
+        return false;
     }
-    memcpy(&btcData, serializedData.buf, dataSize);
+
+    bitcoinData loadedData;
+    memcpy(&loadedData, serializedData.buf, dataSize);
+    free(serializedData.buf);
+
+    std::lock_guard<std::mutex> lock(btcDataMutex);
+    btcData = loadedData;
+    btcDataLoaded = true;
     rM.isBtcDataAvail = true;
+    return true;
 }
 
 void wfBitcheckShow(bool *showBool, bool *redrawBool)
@@ -54,8 +86,12 @@ void wfBitcheckShow(bool *showBool, bool *redrawBool)
         *showBool = true;
     }
 #endif
-    // if (rM.isBtcDataAvail == true && (rM.isBtcDataNew == true || rM.btcLastUpdate + 1 != rM.btcLastUpdate) )
-    if (rM.isBtcDataAvail == true && (rM.isBtcDataNew == true || getHourDifference(getUnixTime(timeRTCLocal), btcData.btcLastSyncUnix) != rM.btcLastUpdate))
+    long lastSyncUnix;
+    {
+        std::lock_guard<std::mutex> lock(btcDataMutex);
+        lastSyncUnix = btcData.btcLastSyncUnix;
+    }
+    if (rM.isBtcDataAvail == true && (rM.isBtcDataNew == true || getBitcoinSyncAgeMinutes(lastSyncUnix) != rM.btcLastUpdate))
     {
         debugLog("btc redraw bool is true!");
         *redrawBool = true;
@@ -78,19 +114,35 @@ void wfBitrequestShow(buttonState button, bool *showBool)
         clearModuleArea();
     }
     debugLog("Launched");
-    loadBitcoinData();
+    bool needsLoad;
+    {
+        std::lock_guard<std::mutex> lock(btcDataMutex);
+        needsLoad = btcDataLoaded == false;
+    }
+    if (needsLoad == true)
+    {
+        loadBitcoinData();
+    }
+
+    bitcoinData displayData = {0};
+    bool dataAvailable;
+    {
+        std::lock_guard<std::mutex> lock(btcDataMutex);
+        displayData = btcData;
+        dataAvailable = btcDataLoaded == true && rM.isBtcDataAvail == true;
+    }
     squareInfo modSq = getWatchModuleSquare();
     if (rM.smallBtcData == true)
     {
 
         writeImageN(modSq.cord.x, modSq.cord.y, getImg("bitcoin"));
         writeImageN(modSq.cord.x, modSq.cord.y + modSq.size.h - getImgWidth("pickaxe"), getImg("pickaxe"));
-        if (rM.isBtcDataAvail == true)
+        if (dataAvailable == true)
         {
             dis->setCursor(modSq.cord.x + getImgWidth("pickaxe"), modSq.cord.y + modSq.size.h - 1);
             setFont(getFont("dogicapixel4"));
             setTextSize(1);
-            dis->print(btcData.height);
+            dis->print(displayData.height);
         }
         setFont(getFont("dogicapixel4"));
         setTextSize(1);
@@ -100,13 +152,12 @@ void wfBitrequestShow(buttonState button, bool *showBool)
         setFont(getFont("dogicapixel4"));
         dis->setCursor(modSq.cord.x + modSq.size.w, modSq.cord.y + 7);
         String lastSync = "Never";
-        if (rM.isBtcDataAvail == true)
+        if (dataAvailable == true)
         {
-            uint diff = getHourDifference(getUnixTime(timeRTCLocal), btcData.btcLastSyncUnix);
-            // uint diff = rM.btcLastUpdate + 1;
+            uint diff = getBitcoinSyncAgeMinutes(displayData.btcLastSyncUnix);
             rM.btcLastUpdate = diff;
             debugLog("diff: " + String(diff));
-            lastSync = String(diff) + "h ago";
+            lastSync = String(diff) + "m ago";
         }
         uint16_t h;
         uint16_t w;
@@ -114,16 +165,16 @@ void wfBitrequestShow(buttonState button, bool *showBool)
         dis->setCursor(modSq.cord.x + modSq.size.w - w - SYNC_INFO_OFFSET, modSq.cord.y + 7 + h + SYNC_INFO_OFFSET);
         dis->print(lastSync);
 
-        if (btcData.change1h != 0.0 || btcData.change24h != 0.0 || btcData.change7d != 0.0 || btcData.change30d != 0.0 || btcData.price != 0.0)
+        if (dataAvailable == true && (displayData.change1h != 0.0 || displayData.change24h != 0.0 || displayData.change7d != 0.0 || displayData.change30d != 0.0 || displayData.price != 0.0))
         {
             dis->setCursor(modSq.cord.x + getImgWidth("bitcoin"), modSq.cord.y + getImgHeight("bitcoin") - 2);
             setFont(getFont("dogicapixel4"));
             setTextSize(1);
-            dis->print(":" + String(btcData.price) + "$");
+            dis->print(":" + String(displayData.price) + "$");
             dis->setCursor(modSq.cord.x, modSq.cord.y + getImgHeight("bitcoin") * 2);
-            dis->print("1h:" + String(btcData.change1h) + "% 24h:" + String(btcData.change24h) + "%");
+            dis->print("1h:" + String(displayData.change1h) + "% 24h:" + String(displayData.change24h) + "%");
             dis->setCursor(modSq.cord.x, modSq.cord.y + getImgHeight("bitcoin") * 3);
-            dis->print("7d:" + String(btcData.change7d) + "% 30d:" + String(btcData.change30d) + "%");
+            dis->print("7d:" + String(displayData.change7d) + "% 30d:" + String(displayData.change30d) + "%");
         }
         else
         {
@@ -141,13 +192,12 @@ void wfBitrequestShow(buttonState button, bool *showBool)
         setFont(getFont("dogicapixel4"));
         dis->setCursor(modSq.cord.x + modSq.size.w, modSq.cord.y + 7);
         String lastSync = "Never";
-        if (rM.isBtcDataAvail == true)
+        if (dataAvailable == true)
         {
-            uint diff = getHourDifference(getUnixTime(timeRTCLocal), btcData.btcLastSyncUnix);
-            // uint diff = rM.btcLastUpdate + 1;
+            uint diff = getBitcoinSyncAgeMinutes(displayData.btcLastSyncUnix);
             rM.btcLastUpdate = diff;
             debugLog("diff: " + String(diff));
-            lastSync = String(diff) + "h ago";
+            lastSync = String(diff) + "m ago";
         }
         uint16_t h;
         uint16_t w;
@@ -159,7 +209,10 @@ void wfBitrequestShow(buttonState button, bool *showBool)
         dis->setCursor(modSq.cord.x, modSq.cord.y + modSq.size.h - 1);
         setFont(getFont("smileandwave20"));
         setTextSize(1);
-        dis->print(btcData.height);
+        if (dataAvailable == true)
+        {
+            dis->print(displayData.height);
+        }
     }
 
     rM.isBtcDataNew = false;
@@ -225,7 +278,7 @@ float roundToDecimal(float value, int decimalPlaces) {
     return round(value * scale) / scale;
 }
 
-void bitcoinSync(uint8_t tries)
+void bitcoinSyncAttempt(uint8_t tries, bitcoinData &newData)
 {
     debugLog("Launching bitcoinSync");
     if (tries > BITCOIN_SYNC_TRIES)
@@ -233,11 +286,6 @@ void bitcoinSync(uint8_t tries)
         debugLog("Too many tries, exiting");
         return;
     }
-    if(tries == 1) {
-        // Zero it out
-        btcData = {0};
-    }
-
     String height = "";
     {
         HTTPClient http;
@@ -261,12 +309,12 @@ void bitcoinSync(uint8_t tries)
 
     debugLog("Got bitcoin height: " + height);
 
-    if(btcData.height == 0) {
-        btcData.height = height.toInt();
+    if(newData.height == 0) {
+        newData.height = height.toInt();
     }
     uint64_t unixTimeNow = getUnixTime(timeRTCUTC0);
-    if(btcData.price == 0) {
-        btcData.price = getBitcoinPriceForUnix(unixTimeNow);
+    if(newData.price == 0) {
+        newData.price = getBitcoinPriceForUnix(unixTimeNow);
     }
 
     int price1h = getBitcoinPriceForUnix(unixTimeNow - 3600);
@@ -275,26 +323,36 @@ void bitcoinSync(uint8_t tries)
     int price30d = getBitcoinPriceForUnix(unixTimeNow - 2592000);
     
     if(price1h != 0 && price24h != 0 && price7d != 0 && price30d != 0) {
-        btcData.change1h = roundToDecimal((float(btcData.price - price1h) / float(price1h)) * 100.0, 1);
-        btcData.change24h = roundToDecimal((float(btcData.price - price24h) / float(price24h)) * 100.0, 1);
-        btcData.change7d = roundToDecimal((float(btcData.price - price7d) / float(price7d)) * 100.0, 1);
-        btcData.change30d = roundToDecimal((float(btcData.price - price30d) / float(price30d)) * 100.0, 1);
+        newData.change1h = roundToDecimal((float(newData.price - price1h) / float(price1h)) * 100.0, 1);
+        newData.change24h = roundToDecimal((float(newData.price - price24h) / float(price24h)) * 100.0, 1);
+        newData.change7d = roundToDecimal((float(newData.price - price7d) / float(price7d)) * 100.0, 1);
+        newData.change30d = roundToDecimal((float(newData.price - price30d) / float(price30d)) * 100.0, 1);
     }
 
-    if(btcData.height == 0 || btcData.price == 0 || price1h == 0 || price24h == 0 || price7d == 0 || price30d == 0) {
+    if(newData.height == 0 || newData.price == 0 || price1h == 0 || price24h == 0 || price7d == 0 || price30d == 0) {
         debugLog("Running again, next try: " + String(tries + 1));
         // Yield so failing retries can't starve lower-priority tasks
         // (scom serial task, main loop) into apparent silence.
         delayTask(2000);
-        bitcoinSync(tries + 1);
+        bitcoinSyncAttempt(tries + 1, newData);
     } else {
         debugLog("Bitcoin is fine!");
-        btcData.btcLastSyncUnix = getUnixTime(timeRTCLocal);
+        newData.btcLastSyncUnix = getUnixTime(timeRTCLocal);
         // Without this the module never redraws with the new data: the
         // show-check only refreshes on new data or a changed hour-diff.
-        rM.isBtcDataNew = true;
-        saveBitcoinData();
+        if (saveBitcoinData(newData) == true)
+        {
+            rM.isBtcDataNew = true;
+        }
     }
+}
+
+void bitcoinSync(uint8_t tries)
+{
+    // Keep the current display and persisted data untouched until a complete
+    // replacement snapshot has been fetched and saved successfully.
+    bitcoinData newData = {0};
+    bitcoinSyncAttempt(tries, newData);
 }
 
 #endif

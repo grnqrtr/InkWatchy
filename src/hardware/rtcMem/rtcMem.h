@@ -43,6 +43,9 @@ struct rtcMem
     // Wifi logic
     uint64_t lastSyncUnix;
     uint64_t lastTryUnix;
+#if WEATHER_INFO
+    bool isWeatherDataNew : 1;
+#endif
 // Ntp
 // Time drift correction
 #if TIME_DRIFT_CORRECTION

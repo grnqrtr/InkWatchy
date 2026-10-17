@@ -1,5 +1,7 @@
 #include "littlefs.h"
 
+static std::mutex blob_mutex;
+
 /*
 // Just use default value
 bool fsIsConfig(String conf, String dir)
@@ -370,33 +372,51 @@ bool fsSetBlob(String conf, uint8_t *value, int size, String dir)
 #if !FILESYSTEM_COMPRESSION
 bufSize fsGetBlob(String conf, String dir)
 {
+    std::lock_guard<std::mutex> lock(blob_mutex);
     if (fsSetup() == false)
     {
         debugLog("Failed to setup fs");
         return emptyBuff;
     }
-    File file = LittleFS.open(dir + conf);
-    if (file == false)
+
+    for (uint8_t attempt = 0; attempt < 2; attempt++)
     {
-        debugLog("There is no conf file: " + conf);
-        return emptyBuff;
+        File file = LittleFS.open(dir + conf);
+        if (file == false)
+        {
+            debugLog("There is no conf file: " + conf);
+            return emptyBuff;
+        }
+        int fileSize = file.size();
+        uint8_t *buf = (uint8_t *)malloc(fileSize);
+        if (buf == nullptr)
+        {
+            debugLog("Failed to allocate blob buffer: " + conf);
+            file.close();
+            return emptyBuff;
+        }
+
+        size_t bytesRead = file.read(buf, fileSize);
+        file.close();
+        if (bytesRead == fileSize)
+        {
+            bufSize retBuf = {
+                buf, fileSize
+            };
+            return retBuf;
+        }
+
+        free(buf);
+        debugLog("Failed to read the complete file: " + conf + ", retrying");
+        delayTask(10);
     }
-    int fileSize = file.size();
-    uint8_t *buf = (uint8_t *)malloc(fileSize);
-    if (file.read(buf, fileSize) == 0)
-    {
-        debugLog("Failed to read the file: " + conf);
-        return emptyBuff;
-    }
-    file.close();
-    bufSize retBuf = {
-        buf, fileSize
-    };
-    return retBuf;
+
+    return emptyBuff;
 }
 
 bool fsSetBlob(String conf, uint8_t* value, int size, String dir)
 {
+    std::lock_guard<std::mutex> lock(blob_mutex);
     if (fsSetup() == false)
     {
         debugLog("Failed to setup fs");
@@ -408,7 +428,7 @@ bool fsSetBlob(String conf, uint8_t* value, int size, String dir)
         debugLog("Failed to set conf: " + conf);
         return false;
     }
-    if(file.write(value, size) == false) {
+    if(file.write(value, size) != size) {
         debugLog("Failed to write blob to file " + conf);
         file.close();
         return false;
@@ -417,3 +437,53 @@ bool fsSetBlob(String conf, uint8_t* value, int size, String dir)
     return true;
 }
 #endif
+
+bool fsGetBlobInto(String conf, uint8_t *value, int size, String dir)
+{
+#if FILESYSTEM_COMPRESSION
+    bufSize blob = fsGetBlob(conf, dir);
+    if (blob.size != size)
+    {
+        free(blob.buf);
+        return false;
+    }
+    memcpy(value, blob.buf, size);
+    free(blob.buf);
+    return true;
+#else
+    std::lock_guard<std::mutex> lock(blob_mutex);
+    if (fsSetup() == false)
+    {
+        debugLog("Failed to setup fs");
+        return false;
+    }
+
+    for (uint8_t attempt = 0; attempt < 2; attempt++)
+    {
+        File file = LittleFS.open(dir + conf);
+        if (file == false)
+        {
+            debugLog("There is no conf file: " + conf);
+            return false;
+        }
+        if (file.size() != size)
+        {
+            debugLog("Blob has the wrong size: " + conf);
+            file.close();
+            return false;
+        }
+
+        size_t bytesRead = file.read(value, size);
+        file.close();
+        if (bytesRead == size)
+        {
+            return true;
+        }
+
+        debugLog("Failed to read the complete file into the supplied buffer: " + conf + ", retrying");
+        delayTask(10);
+    }
+
+    return false;
+#endif
+}

@@ -1,7 +1,214 @@
 #include "weather.h"
+#include "rtcMem.h"
 
 #if WEATHER_INFO
 #define ADD_DAY_UNIX 86400
+
+#if SYNC_PROXY
+#define COMPACT_WEATHER_API_LINK "&hourly=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,weather_code,pressure_msl,cloud_cover,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m,is_day,wet_bulb_temperature_2m,cape,uv_index,uv_index_clear_sky&daily=sunrise,sunset,sunshine_duration&timeformat=unixtime&timezone=auto"
+
+template <typename T>
+bool parseCompactWeatherArray(const String &payload, const char *key, T *values, size_t count)
+{
+  String marker = String(key) + "=[";
+  int keyIndex = payload.indexOf(marker);
+  if (keyIndex < 0)
+  {
+    debugLog("Missing compact weather field: " + String(key));
+    return false;
+  }
+
+  const char *cursor = payload.c_str() + keyIndex + marker.length();
+
+  for (size_t i = 0; i < count; i++)
+  {
+    while (*cursor == ' ')
+    {
+      cursor++;
+    }
+
+    if (strncmp(cursor, "null", 4) == 0)
+    {
+      values[i] = 0;
+      cursor = cursor + 4;
+    }
+    else
+    {
+      char *end = nullptr;
+      double value = strtod(cursor, &end);
+      if (end == cursor)
+      {
+        debugLog("Invalid compact weather value: " + String(key));
+        return false;
+      }
+      values[i] = static_cast<T>(value);
+      cursor = end;
+    }
+
+    if (i + 1 < count)
+    {
+      if (*cursor != ',')
+      {
+        debugLog("Short compact weather field: " + String(key));
+        return false;
+      }
+      cursor++;
+    }
+  }
+  if (*cursor != ']')
+  {
+    debugLog("Invalid compact weather array end: " + String(key));
+    return false;
+  }
+  return true;
+}
+
+String compactWeatherDate(uint64_t unixTime)
+{
+  char date[11];
+  snprintf(date, sizeof(date), "%04d-%02d-%02d", year(unixTime), month(unixTime), day(unixTime));
+  return String(date);
+}
+
+bool getCompactHourlyForecast(OM_HourlyForecast *forecast, float latitude, float longitude, uint64_t unixTime)
+{
+  memset(forecast, 0, sizeof(*forecast));
+  String date = compactWeatherDate(unixTime);
+  String url = String(SYNC_PROXY_BASE) + "/v1/forecast?watchy_compact=1&latitude=" + String(latitude) + "&longitude=" + String(longitude) + COMPACT_WEATHER_API_LINK + "&start_date=" + date + "&end_date=" + date;
+  WiFiClient client;
+  HTTPClient http;
+  http.setTimeout(17500);
+  http.setConnectTimeout(17500);
+  if (http.begin(client, url) == false)
+  {
+    debugLog("Failed to begin compact weather request");
+    return false;
+  }
+
+  int httpCode = http.GET();
+  debugLog("Compact weather HTTP code: " + String(httpCode));
+  if (httpCode != HTTP_CODE_OK)
+  {
+    http.end();
+    return false;
+  }
+
+  WiFiClient &stream = http.getStream();
+  stream.setTimeout(17500);
+  uint32_t parsedFields = 0;
+  const uint32_t requiredFields = (1UL << 21) - 1;
+  bool status = true;
+  uint64_t readDeadline = millisBetter() + 20000;
+
+  while (status == true && parsedFields != requiredFields && millisBetter() < readDeadline)
+  {
+    if (stream.available() == 0)
+    {
+      if (http.connected() == false)
+      {
+        break;
+      }
+      delayTask(10);
+      continue;
+    }
+
+    String line = stream.readStringUntil('\n');
+    if (line.endsWith("\r"))
+    {
+      line.remove(line.length() - 1);
+    }
+
+#define PARSE_HOURLY(member, field, bit)                                                                                 \
+  if (line.startsWith("hourly." field "=["))                                                                           \
+  {                                                                                                                      \
+    status = parseCompactWeatherArray(line, "hourly." field, forecast->member, OM_WEATHER_MAX_HOURS);                  \
+    if (status == true)                                                                                                  \
+    {                                                                                                                    \
+      parsedFields |= (1UL << bit);                                                                                      \
+    }                                                                                                                    \
+  }
+    PARSE_HOURLY(hourly_time, "time", 0);
+    PARSE_HOURLY(temp, "temperature_2m", 1);
+    PARSE_HOURLY(humidity, "relative_humidity_2m", 2);
+    PARSE_HOURLY(apparent_temp, "apparent_temperature", 3);
+    PARSE_HOURLY(precipitation, "precipitation_probability", 4);
+    PARSE_HOURLY(weather_code, "weather_code", 5);
+    PARSE_HOURLY(pressure, "pressure_msl", 6);
+    PARSE_HOURLY(cloud_cover, "cloud_cover", 7);
+    PARSE_HOURLY(visibility, "visibility", 8);
+    PARSE_HOURLY(wind_speed, "wind_speed_10m", 9);
+    PARSE_HOURLY(wind_deg, "wind_direction_10m", 10);
+    PARSE_HOURLY(wind_gust, "wind_gusts_10m", 11);
+    PARSE_HOURLY(is_day, "is_day", 12);
+    PARSE_HOURLY(wet_bulb_temperature_2m, "wet_bulb_temperature_2m", 13);
+    PARSE_HOURLY(cape, "cape", 14);
+    PARSE_HOURLY(uv_index, "uv_index", 15);
+    PARSE_HOURLY(uv_index_clear_sky, "uv_index_clear_sky", 16);
+#undef PARSE_HOURLY
+
+#define PARSE_DAILY(member, field, bit)                                                                                  \
+  if (line.startsWith("daily." field "=["))                                                                            \
+  {                                                                                                                      \
+    status = parseCompactWeatherArray(line, "daily." field, forecast->member, OM_WEATHER_MAX_DAYS);                    \
+    if (status == true)                                                                                                  \
+    {                                                                                                                    \
+      parsedFields |= (1UL << bit);                                                                                      \
+    }                                                                                                                    \
+  }
+    PARSE_DAILY(daily_time, "time", 17);
+    PARSE_DAILY(sunrise, "sunrise", 18);
+    PARSE_DAILY(sunset, "sunset", 19);
+    PARSE_DAILY(sunshine_duration, "sunshine_duration", 20);
+#undef PARSE_DAILY
+  }
+
+  http.end();
+  if (status == false || parsedFields != requiredFields)
+  {
+    debugLog("Incomplete compact weather response, fields: " + String(parsedFields, HEX));
+    return false;
+  }
+
+  return true;
+}
+
+#if WEATHER_AIR_ENABLED
+bool getCompactAirQualityForecast(OM_AirQualityForecast *forecast, float latitude, float longitude, uint64_t unixTime)
+{
+  String date = compactWeatherDate(unixTime);
+  String url = String(SYNC_PROXY_BASE) + "/v1/air-quality?watchy_compact=1&latitude=" + String(latitude) + "&longitude=" + String(longitude) + AIR_HOURLY_API_LINK + "&start_date=" + date + "&end_date=" + date;
+  String payload = getStringRequest(url);
+  bool status = true;
+
+#define PARSE_AIR(member, field) status = parseCompactWeatherArray(payload, "hourly." field, forecast->member, OM_AIR_QUALITY_MAX_HOURS) && status
+  PARSE_AIR(hourly_time, "time");
+  PARSE_AIR(european_aqi, "european_aqi");
+  PARSE_AIR(us_aqi, "us_aqi");
+  PARSE_AIR(european_aqi_pm2_5, "european_aqi_pm2_5");
+  PARSE_AIR(european_aqi_pm10, "european_aqi_pm10");
+  PARSE_AIR(european_aqi_nitrogen_dioxide, "european_aqi_nitrogen_dioxide");
+  PARSE_AIR(european_aqi_ozone, "european_aqi_ozone");
+  PARSE_AIR(european_aqi_sulphur_dioxide, "european_aqi_sulphur_dioxide");
+  PARSE_AIR(pm2_5, "pm2_5");
+  PARSE_AIR(pm10, "pm10");
+  PARSE_AIR(carbon_monoxide, "carbon_monoxide");
+  PARSE_AIR(carbon_dioxide, "carbon_dioxide");
+  PARSE_AIR(nitrogen_dioxide, "nitrogen_dioxide");
+  PARSE_AIR(sulphur_dioxide, "sulphur_dioxide");
+  PARSE_AIR(ozone, "ozone");
+  PARSE_AIR(aerosol_optical_depth, "aerosol_optical_depth");
+  PARSE_AIR(dust, "dust");
+  PARSE_AIR(methane, "methane");
+  PARSE_AIR(formaldehyde, "formaldehyde");
+  PARSE_AIR(glyoxal, "glyoxal");
+  PARSE_AIR(nitrogen_monoxide, "nitrogen_monoxide");
+  PARSE_AIR(peroxyacyl_nitrates, "peroxyacyl_nitrates");
+#undef PARSE_AIR
+
+  return status;
+}
+#endif
+#endif
 
 // http://api.open-meteo.com/v1/forecast?latitude=53.543082&longitude=9.994695&hourly=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation_probability,weather_code,pressure_msl,cloud_cover,visibility,wind_speed_10m,wind_direction_10m,wind_gusts_10m,is_day&daily=sunrise,sunset&timeformat=unixtime&timezone=auto&forecast_days=16
 void syncWeather()
@@ -14,20 +221,41 @@ void syncWeather()
 
   debugLog("Syncing weather");
   OM_HourlyForecast *forecast = new OM_HourlyForecast;
-
-  removeDir(WEATHER_DIR);
-  fsCreateDir(WEATHER_DIR);
-  fsCreateDir(WEATHER_HOURLY_DIR);
+  if (fsFileExists(WEATHER_DIR) == false)
+  {
+    fsCreateDir(WEATHER_DIR);
+  }
+  if (fsFileExists(WEATHER_HOURLY_DIR) == false)
+  {
+    fsCreateDir(WEATHER_HOURLY_DIR);
+  }
 
   for (u8_t iw = 0; iw < MAX_WEATHER_DAYS; iw++)
   {
     bool status = false;
     uint64_t unixTimeWeat = simplifyUnix(getUnixTime(timeRTCLocal) + (ADD_DAY_UNIX * iw));
     String currentDayDate = unixToDate(unixTimeWeat);
+    String weatherName = String(unixTimeWeat);
+    String weatherPath = String(WEATHER_HOURLY_DIR) + "/" + weatherName;
+    String stagingName = weatherName + ".new";
+    String stagingPath = String(WEATHER_HOURLY_DIR) + "/" + stagingName;
+    String backupPath = weatherPath + ".bak";
+
+    if (LittleFS.exists(weatherPath) == false && LittleFS.exists(backupPath))
+    {
+      if (LittleFS.rename(backupPath, weatherPath) == false)
+      {
+        debugLog("Failed to recover the previous weather snapshot");
+      }
+    }
     for (u8_t i = 0; i < WEATHER_TRIES; i++)
     {
       debugLog("Trying to get weather for day: " + String(currentDayDate));
+#if SYNC_PROXY
+      status = getCompactHourlyForecast(forecast, String(WEATHER_LATIT).toFloat(), String(WEATHER_LONGTIT).toFloat(), unixTimeWeat);
+#else
       status = getHourlyForecast(forecast, String(WEATHER_LATIT).toFloat(), String(WEATHER_LONGTIT).toFloat(), unixTimeWeat);
+#endif
       if (status == true)
       {
         break;
@@ -86,12 +314,41 @@ void syncWeather()
     }
 #endif
 
-    if (fsSetBlob(String(unixTimeWeat), (uint8_t *)forecast, sizeof(OM_HourlyForecast), String(WEATHER_HOURLY_DIR) + "/") == false)
+    LittleFS.remove(stagingPath);
+    if (fsSetBlob(stagingName, (uint8_t *)forecast, sizeof(OM_HourlyForecast), String(WEATHER_HOURLY_DIR) + "/") == false)
     {
       debugLog("Failed to set weather " + String(currentDayDate));
+      delete forecast;
+      return;
     }
+
+    // Keep the old file until the complete replacement has been written. File
+    // renames avoid LittleFS directory-rename path aliasing during cleanup.
+    bool hadWeather = LittleFS.exists(weatherPath);
+    LittleFS.remove(backupPath);
+    if (hadWeather && LittleFS.rename(weatherPath, backupPath) == false)
+    {
+      debugLog("Failed to back up the previous weather snapshot");
+      LittleFS.remove(stagingPath);
+      delete forecast;
+      return;
+    }
+    if (LittleFS.rename(stagingPath, weatherPath) == false)
+    {
+      debugLog("Failed to activate the new weather snapshot");
+      if (hadWeather && LittleFS.rename(backupPath, weatherPath) == false)
+      {
+        debugLog("Failed to restore the previous weather snapshot");
+      }
+      LittleFS.remove(stagingPath);
+      delete forecast;
+      return;
+    }
+    LittleFS.remove(backupPath);
   }
   delete forecast;
+  rM.isWeatherDataNew = true;
+  debugLog("Weather snapshot replaced: " + String(sizeof(OM_HourlyForecast)) + " bytes");
 
 #if WEATHER_AIR_ENABLED
   OM_AirQualityForecast *airForecast = new OM_AirQualityForecast;
@@ -107,7 +364,11 @@ void syncWeather()
     for (u8_t i = 0; i < WEATHER_TRIES; i++)
     {
       debugLog("Trying to get air quality for day: " + String(currentDayDate));
+#if SYNC_PROXY
+      status = getCompactAirQualityForecast(airForecast, String(WEATHER_LATIT).toFloat(), String(WEATHER_LONGTIT).toFloat(), unixTimeAir);
+#else
       status = getAirQualityForecast(airForecast, String(WEATHER_LATIT).toFloat(), String(WEATHER_LONGTIT).toFloat(), unixTimeAir);
+#endif
       if (status == true)
       {
         break;

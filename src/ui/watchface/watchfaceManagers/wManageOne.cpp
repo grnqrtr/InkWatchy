@@ -49,7 +49,12 @@ void wManageOneLoop(const watchfaceDefOne *wdo)
 
             if (rM.disableSomeDrawing == false)
             {
-                wdo->drawTimeAfterApply(false);
+                bool forceWatchfaceDraw = false;
+#if WEATHER_INFO
+                forceWatchfaceDraw = rM.isWeatherDataNew;
+                rM.isWeatherDataNew = false;
+#endif
+                wdo->drawTimeAfterApply(forceWatchfaceDraw);
             }
         }
 
@@ -76,15 +81,26 @@ void wManageOneLoop(const watchfaceDefOne *wdo)
         }
         if (wdo->watchfaceModules == true)
         {
-            debugLog("getUnixTime(timeRTCLocal): " + String(getUnixTime(timeRTCLocal)));
+            uint64_t currentUnixTime = getUnixTime(timeRTCLocal);
+            debugLog("getUnixTime(timeRTCLocal): " + String(currentUnixTime));
             debugLog("rM.latestModuleUpdate: " + String(rM.latestModuleUpdate));
+            bool updateModules = false;
+#if BITCOIN_MODULE
+            // Recheck the visible Bitcoin age on every minute tick. The module
+            // redraws only when its minute value changes or new data arrives.
+            updateModules = true;
+#endif
 #if MODULE_UPDATE_LIMIT_S != 0
-            if (getUnixTime(timeRTCLocal) - rM.latestModuleUpdate > MODULE_UPDATE_LIMIT_S)
+            if (currentUnixTime - rM.latestModuleUpdate >= MODULE_UPDATE_LIMIT_S)
             {
                 debugLog("Finally updating modules via time trigger");
-                wfModulesManage(None);
+                updateModules = true;
             }
 #endif
+            if (updateModules == true)
+            {
+                wfModulesManage(None);
+            }
         }
     }
     else

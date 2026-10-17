@@ -30,6 +30,7 @@ const GFXfont* getFont(String name);
 String fsGetString(String conf, String defaultValue, String dir = "/conf/");
 bool fsSetString(String conf, String value, String dir = "/conf/");
 bufSize fsGetBlob(String conf, String dir = "/conf/");
+bool fsGetBlobInto(String conf, uint8_t* value, int size, String dir = "/conf/");
 bool fsSetBlob(String conf, uint8_t* value, int size, String dir = "/conf/");
 
 void cleanFontCache();
@@ -38,4 +39,3 @@ void cleanImgCache();
 #if DEBUG
 void fsListDir(String dirname, uint8_t levels);
 #endif
-
