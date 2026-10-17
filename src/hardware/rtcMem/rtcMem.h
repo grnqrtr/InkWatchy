@@ -184,6 +184,15 @@ struct rtcMem
         uint8_t lastMinuteUnits;
     } starfield;
 #endif
+// blockwatch watchface
+#if WATCHFACE_BLOCKWATCH
+    struct
+    {
+        bool moscowTime : 1;      // false = block height, true = moscow time
+        int lastHeight;           // last block height seen (to detect a new block)
+        uint64_t heightEpochUnix; // unix time the current height was first seen
+    } blockwatch;
+#endif
 // Watchface modules
     uint64_t latestModuleUpdate;
     int currentModule; // Int because checkMinMax again

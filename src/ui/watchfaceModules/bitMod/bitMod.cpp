@@ -76,6 +76,21 @@ bool loadBitcoinData()
     return true;
 }
 
+bitcoinData getBitcoinSnapshot(bool *available)
+{
+    if (btcDataLoaded == false)
+    {
+        loadBitcoinData();
+    }
+
+    std::lock_guard<std::mutex> lock(btcDataMutex);
+    if (available != NULL)
+    {
+        *available = btcDataLoaded && rM.isBtcDataAvail;
+    }
+    return btcData;
+}
+
 void wfBitcheckShow(bool *showBool, bool *redrawBool)
 {
 #if MODULE_PERSISTENT

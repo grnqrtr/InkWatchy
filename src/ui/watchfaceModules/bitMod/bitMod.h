@@ -22,4 +22,9 @@ void bitcoinPriceSync(uint8_t tries);
 void wfBitcheckShow(bool *showBool, bool *redrawBool);
 void wfBitrequestShow(buttonState button, bool *showBool);
 
+// Thread-safe copy of the current bitcoin snapshot for watchfaces.
+// Loads the persisted data on first use. Sets *available to whether usable
+// data (height/price) is present.
+bitcoinData getBitcoinSnapshot(bool *available);
+
 #endif

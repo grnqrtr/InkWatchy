@@ -170,6 +170,14 @@ RTC_DATA_ATTR rtcMem rM = {
         .lastMinuteUnits = 255,
     },
 #endif
+// blockwatch watchface
+#if WATCHFACE_BLOCKWATCH
+    .blockwatch = {
+        .moscowTime = false,
+        .lastHeight = 0,
+        .heightEpochUnix = 0,
+    },
+#endif
 // Watchface modules
     .latestModuleUpdate = 0,
     .currentModule = DEFAULT_WATCHFACE_MODULE_INDEX,

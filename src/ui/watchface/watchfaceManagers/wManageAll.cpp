@@ -115,6 +115,14 @@ const watchfaceDef starfieldWatchface = {
 };
 #endif
 
+#if WATCHFACE_BLOCKWATCH
+const watchfaceDef blockwatchWatchface = {
+    .manager = wfmOne,
+    .name = "Block Clock",
+    .data = (genPointer)&blockwatchDef,
+};
+#endif
+
 #if GSR_WATCHFACES && GSR_CLASSICS_BASICS
 const watchfaceDef gsrBasic = {
     .manager = wfmGSR,
@@ -245,6 +253,11 @@ const watchfaceDef *watchfacesList[WATCHFACE_COUNT] = {
 #endif
 #if WATCHFACE_STARFIELD
     &starfieldWatchface,
+#else
+    &noWatchFace,
+#endif
+#if WATCHFACE_BLOCKWATCH
+    &blockwatchWatchface,
 #else
     &noWatchFace,
 #endif

@@ -283,6 +283,9 @@ extern uint16_t SCWhite;
 #if WATCHFACE_STARFIELD
 #include "../ui/watchface/watchfaces/starfield/starfield.h"
 #endif
+#if WATCHFACE_BLOCKWATCH
+#include "../ui/watchface/watchfaces/blockwatch/blockwatch.h"
+#endif
 #if GSR_WATCHFACES
 #include "../ui/watchface/watchfaceManagers/wManageGSR/wManageGSR.h"
 #endif
