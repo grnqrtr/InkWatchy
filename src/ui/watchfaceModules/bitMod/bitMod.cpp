@@ -278,72 +278,197 @@ float roundToDecimal(float value, int decimalPlaces) {
     return round(value * scale) / scale;
 }
 
+// One small request for the current tip height. Returns 0 on any failure.
+static int fetchBitcoinHeight()
+{
+    HTTPClient http;
+    // Same generous limits as the price request.
+    http.setTimeout(25000);
+    http.setConnectTimeout(15000);
+    http.begin(String(MEMPOOL_BASEURL) + "/blocks/tip/height");
+    int httpCode = http.GET();
+    debugLog("Height http code: " + String(httpCode));
+    int height = 0;
+    if (httpCode == HTTP_CODE_OK)
+    {
+        String body = http.getString();
+        http.end();
+        height = body.toInt();
+    }
+    else
+    {
+        http.end();
+    }
+    debugLog("Got bitcoin height: " + String(height));
+    return height;
+}
+
+// Spot price plus the reference prices behind the change percentages. Fills
+// `out.price`/`out.change*` and returns false if anything is missing.
+static bool fetchBitcoinPriceData(bitcoinData &out)
+{
+    uint64_t unixTimeNow = getUnixTime(timeRTCUTC0);
+    int price = getBitcoinPriceForUnix(unixTimeNow);
+    int price1h = getBitcoinPriceForUnix(unixTimeNow - 3600);
+    int price24h = getBitcoinPriceForUnix(unixTimeNow - 86400);
+    int price7d = getBitcoinPriceForUnix(unixTimeNow - 604800);
+    int price30d = getBitcoinPriceForUnix(unixTimeNow - 2592000);
+
+    if (price == 0 || price1h == 0 || price24h == 0 || price7d == 0 || price30d == 0)
+    {
+        return false;
+    }
+
+    out.price = price;
+    out.change1h = roundToDecimal((float(price - price1h) / float(price1h)) * 100.0, 1);
+    out.change24h = roundToDecimal((float(price - price24h) / float(price24h)) * 100.0, 1);
+    out.change7d = roundToDecimal((float(price - price7d) / float(price7d)) * 100.0, 1);
+    out.change30d = roundToDecimal((float(price - price30d) / float(price30d)) * 100.0, 1);
+    return true;
+}
+
+// Height-only sync: one small request, merged into the current snapshot so it
+// never clobbers price data (and the price sync never clobbers the height).
+// Meant to run far more often than the price sync.
+void bitcoinHeightSync(uint8_t tries)
+{
+    debugLog("Launching bitcoinHeightSync");
+    if (tries > BITCOIN_SYNC_TRIES)
+    {
+        debugLog("Too many height tries, giving up");
+        rM.isBtcHeightFailed = true;
+        return;
+    }
+
+    int height = fetchBitcoinHeight();
+    if (height <= 0)
+    {
+        debugLog("Height retry, next try: " + String(tries + 1));
+        // Yield so failing retries can't starve lower-priority tasks
+        // (scom serial task, main loop) into apparent silence.
+        delayTask(2000);
+        bitcoinHeightSync(tries + 1);
+        return;
+    }
+
+    if (btcDataLoaded == false)
+    {
+        loadBitcoinData();
+    }
+
+    bitcoinData snapshot;
+    bool heightChanged;
+    {
+        std::lock_guard<std::mutex> lock(btcDataMutex);
+        heightChanged = btcData.height != height;
+        btcData.height = height;
+        snapshot = btcData;
+    }
+    rM.btcLastHeightSyncUnix = getUnixTime(timeRTCLocal);
+
+    // Only write flash when the height actually moved (a block averages ~10
+    // min): a 1-minute poll must not wear the filesystem.
+    if (heightChanged)
+    {
+        if (saveBitcoinData(snapshot) == true)
+        {
+            rM.isBtcDataNew = true;
+            rM.isBtcHeightFailed = false;
+        }
+        else
+        {
+            rM.isBtcHeightFailed = true;
+        }
+    }
+    else
+    {
+        rM.isBtcHeightFailed = false;
+    }
+}
+
+// Price-only sync: spot + reference prices, merged into the current snapshot
+// (keeps the height and its timestamp).
+void bitcoinPriceSync(uint8_t tries)
+{
+    debugLog("Launching bitcoinPriceSync");
+    if (tries > BITCOIN_SYNC_TRIES)
+    {
+        debugLog("Too many price tries, giving up");
+        rM.isBtcPriceFailed = true;
+        return;
+    }
+
+    bitcoinData priceData = {0};
+    if (fetchBitcoinPriceData(priceData) == false)
+    {
+        debugLog("Price retry, next try: " + String(tries + 1));
+        delayTask(2000);
+        bitcoinPriceSync(tries + 1);
+        return;
+    }
+
+    if (btcDataLoaded == false)
+    {
+        loadBitcoinData();
+    }
+    {
+        std::lock_guard<std::mutex> lock(btcDataMutex);
+        priceData.height = btcData.height;
+    }
+    priceData.btcLastSyncUnix = getUnixTime(timeRTCLocal);
+
+    // Without this the module never redraws with the new data: the
+    // show-check only refreshes on new data or a changed hour-diff.
+    if (saveBitcoinData(priceData) == true)
+    {
+        rM.isBtcDataNew = true;
+        rM.isBtcPriceFailed = false;
+    }
+    else
+    {
+        rM.isBtcPriceFailed = true;
+    }
+}
+
+// Full sync (height + price), used by the regular / kind-of-persistent paths.
 void bitcoinSyncAttempt(uint8_t tries, bitcoinData &newData)
 {
     debugLog("Launching bitcoinSync");
     if (tries > BITCOIN_SYNC_TRIES)
     {
         debugLog("Too many tries, exiting");
+        rM.isBtcHeightFailed = true;
+        rM.isBtcPriceFailed = true;
         return;
     }
-    String height = "";
+
+    int height = fetchBitcoinHeight();
+    bitcoinData priceData = {0};
+    bool priceOk = fetchBitcoinPriceData(priceData);
+
+    if (height <= 0 || priceOk == false)
     {
-        HTTPClient http;
-        // Same generous limits as the price request.
-        http.setTimeout(25000);
-        http.setConnectTimeout(15000);
-        http.begin(String(MEMPOOL_BASEURL) + "/blocks/tip/height");
-        int httpCode = http.GET();
-        debugLog("Height http code: " + String(httpCode));
-        if (httpCode == HTTP_CODE_OK)
-        {
-            height = http.getString();
-            http.end();
-        }
-        else
-        {
-            http.end();
-            height = String("ERR ") + String(httpCode);
-        }
-    }
-
-    debugLog("Got bitcoin height: " + height);
-
-    if(newData.height == 0) {
-        newData.height = height.toInt();
-    }
-    uint64_t unixTimeNow = getUnixTime(timeRTCUTC0);
-    if(newData.price == 0) {
-        newData.price = getBitcoinPriceForUnix(unixTimeNow);
-    }
-
-    int price1h = getBitcoinPriceForUnix(unixTimeNow - 3600);
-    int price24h = getBitcoinPriceForUnix(unixTimeNow - 86400);
-    int price7d = getBitcoinPriceForUnix(unixTimeNow - 604800);
-    int price30d = getBitcoinPriceForUnix(unixTimeNow - 2592000);
-    
-    if(price1h != 0 && price24h != 0 && price7d != 0 && price30d != 0) {
-        newData.change1h = roundToDecimal((float(newData.price - price1h) / float(price1h)) * 100.0, 1);
-        newData.change24h = roundToDecimal((float(newData.price - price24h) / float(price24h)) * 100.0, 1);
-        newData.change7d = roundToDecimal((float(newData.price - price7d) / float(price7d)) * 100.0, 1);
-        newData.change30d = roundToDecimal((float(newData.price - price30d) / float(price30d)) * 100.0, 1);
-    }
-
-    if(newData.height == 0 || newData.price == 0 || price1h == 0 || price24h == 0 || price7d == 0 || price30d == 0) {
         debugLog("Running again, next try: " + String(tries + 1));
-        // Yield so failing retries can't starve lower-priority tasks
-        // (scom serial task, main loop) into apparent silence.
         delayTask(2000);
         bitcoinSyncAttempt(tries + 1, newData);
-    } else {
-        debugLog("Bitcoin is fine!");
-        newData.btcLastSyncUnix = getUnixTime(timeRTCLocal);
-        // Without this the module never redraws with the new data: the
-        // show-check only refreshes on new data or a changed hour-diff.
-        if (saveBitcoinData(newData) == true)
-        {
-            rM.isBtcDataNew = true;
-        }
+        return;
+    }
+
+    debugLog("Bitcoin is fine!");
+    newData = priceData;
+    newData.height = height;
+    newData.btcLastSyncUnix = getUnixTime(timeRTCLocal);
+    rM.btcLastHeightSyncUnix = newData.btcLastSyncUnix;
+    if (saveBitcoinData(newData) == true)
+    {
+        rM.isBtcDataNew = true;
+        rM.isBtcHeightFailed = false;
+        rM.isBtcPriceFailed = false;
+    }
+    else
+    {
+        rM.isBtcHeightFailed = true;
+        rM.isBtcPriceFailed = true;
     }
 }
 

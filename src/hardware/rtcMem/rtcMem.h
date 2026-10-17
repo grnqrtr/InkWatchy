@@ -197,8 +197,14 @@ struct rtcMem
     wfModule wfBit;
     bool isBtcDataAvail : 1;
     bool isBtcDataNew : 1;
+    // Split sync: the cheap height poll and the heavier price sync can fail
+    // independently, so track them separately.
+    bool isBtcHeightFailed : 1;
+    bool isBtcPriceFailed : 1;
     bool smallBtcData : 1;
     uint btcLastUpdate;
+    // Last successful height-only sync (kept in RAM, not the bitcoin blob).
+    long btcLastHeightSyncUnix;
     // Keep-wifi-on mode, toggled in the wifi debug page. Resets on power loss.
     bool keepWifiOn : 1;
 // wFBook

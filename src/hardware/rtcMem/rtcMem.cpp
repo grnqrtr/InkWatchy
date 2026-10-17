@@ -196,8 +196,11 @@ RTC_DATA_ATTR rtcMem rM = {
     },
     .isBtcDataAvail = false,
     .isBtcDataNew = false,
+    .isBtcHeightFailed = false,
+    .isBtcPriceFailed = false,
     .smallBtcData = SMALL_BTC_MODULE,
     .btcLastUpdate = 0,
+    .btcLastHeightSyncUnix = 0,
 #endif
     .keepWifiOn = false,
 // wFBook

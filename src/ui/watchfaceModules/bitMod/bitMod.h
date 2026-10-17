@@ -15,6 +15,10 @@ struct bitcoinData {
 };
 
 void bitcoinSync(uint8_t tries);
+// Height-only poll (one small request); merges just the height.
+void bitcoinHeightSync(uint8_t tries);
+// Price-only sync (spot + reference prices for the change percentages).
+void bitcoinPriceSync(uint8_t tries);
 void wfBitcheckShow(bool *showBool, bool *redrawBool);
 void wfBitrequestShow(buttonState button, bool *showBool);
 

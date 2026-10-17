@@ -1,8 +1,10 @@
 #include "wifiLogic.h"
 #include "rtcMem.h"
 
-// Keep-wifi-on mode: full sync (NTP + weather + bitcoin) cadence
-#define WIFI_KEEP_ON_SYNC_MS 300000 // 5 minutes
+// Keep-wifi-on mode is two-tier: a cheap block-height poll, and the heavier
+// full sync (NTP + price + weather) on a longer cadence.
+#define WIFI_KEEP_ON_HEIGHT_MS 60000 // 1 minute
+#define WIFI_KEEP_ON_FULL_MS 600000  // 10 minutes
 
 
 void wifiSyncModules()
@@ -78,14 +80,36 @@ void turnOnWifiKindOfPersistent()
 void wifiKeepOn()
 {
     debugLog("Launching wifi keep-on");
+    uint64_t lastFullSync = 0;
+    bool first = true;
     while (rM.keepWifiOn == true && WiFi.status() == WL_CONNECTED)
     {
-        syncNtp(false);
-        wifiSyncModules();
-        rM.lastSyncUnix = getUnixTime(timeRTCLocal);
+#if BITCOIN_MODULE
+        // Cheap tip-height poll every cycle; one small request.
+        softStartDelay();
+        bitcoinHeightSync(1);
+#endif
+        if (first || getUnixTime(timeRTCLocal) - lastFullSync >= (uint64_t)(WIFI_KEEP_ON_FULL_MS / 1000))
+        {
+            // Expensive bundle: clock + price + change windows + weather.
+            // Bitcoin before weather: with SYNC_PROXY off it uses TLS, which
+            // needs a large contiguous heap block the weather sync fragments.
+            syncNtp(false);
+#if BITCOIN_MODULE
+            softStartDelay();
+            bitcoinPriceSync(1);
+#endif
+#if WEATHER_INFO
+            softStartDelay();
+            syncWeather();
+#endif
+            lastFullSync = getUnixTime(timeRTCLocal);
+            rM.lastSyncUnix = lastFullSync;
+            first = false;
+        }
         // Wait in 1s steps so turning the toggle off reacts within ~1s
         int waitedMs = 0;
-        while (waitedMs < WIFI_KEEP_ON_SYNC_MS && rM.keepWifiOn == true && WiFi.status() == WL_CONNECTED)
+        while (waitedMs < WIFI_KEEP_ON_HEIGHT_MS && rM.keepWifiOn == true && WiFi.status() == WL_CONNECTED)
         {
             delayTask(1000);
             waitedMs = waitedMs + 1000;
