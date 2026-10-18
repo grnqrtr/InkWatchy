@@ -33,6 +33,8 @@
 #define WATCHFACE_RETROJUMP 0
 // Starfield watchface (Ported by GabryDX, based on original Prokuon)
 #define WATCHFACE_STARFIELD 0
+// Starfield Blockwatch watchface (Starfield clone showing the bitcoin block height instead of steps)
+#define WATCHFACE_STARFIELD_BLOCKWATCH 0
 
 // GSR watchfaces
 // Because of the ways they are written (even in native watchyGSR) they will provide worse battery life than native inkwatchy watchfaces -

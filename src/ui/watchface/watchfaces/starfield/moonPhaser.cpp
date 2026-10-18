@@ -1,5 +1,5 @@
 #include "defines.h"
-#if WATCHFACE_STARFIELD
+#if WATCHFACE_STARFIELD || WATCHFACE_STARFIELD_BLOCKWATCH
 
 #include <math.h>
 

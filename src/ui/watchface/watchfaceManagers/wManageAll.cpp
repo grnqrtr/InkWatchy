@@ -115,6 +115,14 @@ const watchfaceDef starfieldWatchface = {
 };
 #endif
 
+#if WATCHFACE_STARFIELD_BLOCKWATCH
+const watchfaceDef starfieldBlockwatchWatchface = {
+    .manager = wfmOne,
+    .name = "Starfield Blockwatch",
+    .data = (genPointer)&starfieldBlockwatchDef,
+};
+#endif
+
 #if WATCHFACE_BLOCKWATCH
 const watchfaceDef blockwatchWatchface = {
     .manager = wfmOne,
@@ -253,6 +261,11 @@ const watchfaceDef *watchfacesList[WATCHFACE_COUNT] = {
 #endif
 #if WATCHFACE_STARFIELD
     &starfieldWatchface,
+#else
+    &noWatchFace,
+#endif
+#if WATCHFACE_STARFIELD_BLOCKWATCH
+    &starfieldBlockwatchWatchface,
 #else
     &noWatchFace,
 #endif

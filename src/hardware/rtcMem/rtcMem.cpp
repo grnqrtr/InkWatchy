@@ -155,7 +155,7 @@ RTC_DATA_ATTR rtcMem rM = {
     },
  #endif
 // starfield watchface
-#if WATCHFACE_STARFIELD
+#if WATCHFACE_STARFIELD || WATCHFACE_STARFIELD_BLOCKWATCH
     .starfield = {
         .lastSteps = 0xFFFFFFFF,
         .lastSunPosition = -1,
@@ -168,6 +168,7 @@ RTC_DATA_ATTR rtcMem rM = {
         .lastHourUnits = 255,
         .lastMinuteTens = 255,
         .lastMinuteUnits = 255,
+        .lastBlockHeight = -1,
     },
 #endif
 // blockwatch watchface

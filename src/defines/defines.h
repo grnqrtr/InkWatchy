@@ -280,7 +280,7 @@ extern uint16_t SCWhite;
 #if WATCHFACE_RETROJUMP
 #include "../ui/watchface/watchfaces/retrojump/retrojump.h"
 #endif
-#if WATCHFACE_STARFIELD
+#if WATCHFACE_STARFIELD || WATCHFACE_STARFIELD_BLOCKWATCH
 #include "../ui/watchface/watchfaces/starfield/starfield.h"
 #endif
 #if WATCHFACE_BLOCKWATCH

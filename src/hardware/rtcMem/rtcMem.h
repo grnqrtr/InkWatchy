@@ -168,7 +168,7 @@ struct rtcMem
     } cyber;
 #endif
 // starfield watchface
-#if WATCHFACE_STARFIELD
+#if WATCHFACE_STARFIELD || WATCHFACE_STARFIELD_BLOCKWATCH
     struct
     {
         uint32_t lastSteps;
@@ -182,6 +182,7 @@ struct rtcMem
         uint8_t lastHourUnits;
         uint8_t lastMinuteTens;
         uint8_t lastMinuteUnits;
+        int lastBlockHeight; // Starfield Blockwatch: cached block height digits
     } starfield;
 #endif
 // blockwatch watchface

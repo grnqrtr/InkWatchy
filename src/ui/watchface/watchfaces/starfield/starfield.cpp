@@ -1,6 +1,6 @@
 #include "starfield.h"
 
-#if WATCHFACE_STARFIELD
+#if WATCHFACE_STARFIELD || WATCHFACE_STARFIELD_BLOCKWATCH
 
 #include <math.h>
 #include "Dusk2Dawn.h"
@@ -384,6 +384,7 @@ static void drawWeather()
 }
 #endif
 
+#if WATCHFACE_STARFIELD
 static void starfieldDrawTimeAfterApply(bool forceDraw)
 {
     // 1. Steps
@@ -459,6 +460,142 @@ static void starfieldDrawTimeAfterApply(bool forceDraw)
     drawWeather();
 #endif
 }
+#endif // WATCHFACE_STARFIELD
+
+#if WATCHFACE_STARFIELD_BLOCKWATCH
+// Starfield clone: identical, but the bottom digits show the bitcoin block
+// height (six digits) instead of the step count, and the wifi icon is dropped
+// to free the space taken by the extra digit.
+static void starfieldBlockwatchDrawTimeAfterApply(bool forceDraw)
+{
+    // 1. Step-goal bar (kept from Starfield)
+    uint32_t stepCount = getSteps();
+    if (stepCount != rM.starfield.lastSteps || forceDraw)
+    {
+        rM.starfield.lastSteps = stepCount;
+        uint32_t stepGoal = STEPS_GOAL;
+        if (stepGoal == 0) stepGoal = 10000;
+        uint32_t stepBarLength = 61 * stepCount / stepGoal;
+        if (stepBarLength > 61) stepBarLength = 61;
+
+        if (stepBarLength < 61)
+        {
+            restoreFieldRegion(131 + stepBarLength, 148, 61 - stepBarLength, 9);
+        }
+        if (stepBarLength > 0)
+        {
+            dis->fillRect(131, 148, stepBarLength, 9, SCBlack);
+        }
+    }
+
+    // 2. Bitcoin block height, six digits where the steps used to be
+#if BITCOIN_MODULE
+    bool btcAvail = false;
+    bitcoinData btc = getBitcoinSnapshot(&btcAvail);
+    int height = btc.height;
+    if (height != rM.starfield.lastBlockHeight || forceDraw)
+    {
+        rM.starfield.lastBlockHeight = height;
+        drawDigit(8, 165, height / 100000 % 10);
+        drawDigit(29, 165, height / 10000 % 10);
+        drawDigit(50, 165, height / 1000 % 10);
+        drawDigit(71, 165, height / 100 % 10);
+        drawDigit(92, 165, height / 10 % 10);
+        drawDigit(113, 165, height % 10);
+    }
+#endif
+
+    // 3. Sun Position
+    long currentTimeInMinutes = timeRTCLocal.Hour * 60 + timeRTCLocal.Minute;
+    int sunPosition = 0;
+    int sunrise = rM.starfield.sunriseMinutes;
+    int sunset = rM.starfield.sunsetMinutes;
+    if (sunset > sunrise)
+    {
+        sunPosition = (currentTimeInMinutes - sunrise) * 60 / (sunset - sunrise);
+        if (currentTimeInMinutes > sunset) {
+            sunPosition = 60;
+        } else if (currentTimeInMinutes < sunrise) {
+            sunPosition = 0;
+        }
+    }
+
+    if (sunPosition != rM.starfield.lastSunPosition || forceDraw)
+    {
+        if (!forceDraw && rM.starfield.lastSunPosition >= 0)
+        {
+            restoreFieldRegion(110, 132 - rM.starfield.lastSunPosition, 3, 5);
+        }
+        dis->drawBitmap(110, 132 - sunPosition, arr, 3, 5, SCBlack);
+        rM.starfield.lastSunPosition = sunPosition;
+    }
+
+    // Wifi icon intentionally omitted; the sixth digit uses its space.
+
+#if STARFIELD_SHOW_TEMPERATURE
+    drawWeather();
+#endif
+}
+#endif // WATCHFACE_STARFIELD_BLOCKWATCH
+
+#if WATCHFACE_STARFIELD_BLOCKWATCH
+// The background bitmap carries baked-in bottom captions: a "STEP" bar with
+// out-pointing triangles and a "WIFI" label (plus a small wifi pointer). None
+// of those fit the block-height clone, so they are wiped and replaced with a
+// "TIMECHAIN" caption spanning the full six-digit row.
+static void drawTimechainGlyph(int x, int y, const uint8_t *rows, int w)
+{
+    for (int r = 0; r < 5; r++)
+    {
+        uint8_t bits = rows[r];
+        for (int c = 0; c < w; c++)
+        {
+            if (bits & (0x80 >> c))
+            {
+                dis->drawPixel(x + c, y + r, SCBlack);
+            }
+        }
+    }
+}
+
+static void drawTimechainLabel()
+{
+    // Wipe the baked-in captions (STEP line + triangles, WIFI label + pointer).
+    dis->fillRect(0, 189, 149, 10, SCWhite);
+
+    static const uint8_t triangleLeft[5] = {0x20, 0x60, 0xE0, 0x60, 0x20};
+    static const uint8_t triangleRight[5] = {0x80, 0xC0, 0xE0, 0xC0, 0x80};
+    // Letterforms copied from the watchface background labels ("TIME", "DAWN"):
+    // M is five pixels wide, N is the lowercase "n" style.
+    static const uint8_t letters[9][5] = {
+        {0xE0, 0x40, 0x40, 0x40, 0x40}, // T
+        {0xE0, 0x40, 0x40, 0x40, 0xE0}, // I
+        {0xF8, 0xA8, 0xA8, 0xA8, 0xA8}, // M
+        {0xE0, 0x80, 0xE0, 0x80, 0xE0}, // E
+        {0xE0, 0x80, 0x80, 0x80, 0xE0}, // C
+        {0xA0, 0xA0, 0xE0, 0xA0, 0xA0}, // H
+        {0xE0, 0xA0, 0xE0, 0xA0, 0xA0}, // A
+        {0xE0, 0x40, 0x40, 0x40, 0xE0}, // I
+        {0xE0, 0xA0, 0xA0, 0xA0, 0xA0}, // N
+    };
+    static const uint8_t widths[9] = {3, 3, 5, 3, 3, 3, 3, 3, 3};
+
+    const int labelY = 194;
+
+    drawTimechainGlyph(8, labelY, triangleLeft, 3);
+    dis->fillRect(14, 196, 31, 1, SCBlack);
+
+    int cx = 46;
+    for (int i = 0; i < 9; i++)
+    {
+        drawTimechainGlyph(cx, labelY, letters[i], widths[i]);
+        cx += widths[i] + 2;
+    }
+
+    dis->fillRect(93, 196, 31, 1, SCBlack);
+    drawTimechainGlyph(126, labelY, triangleRight, 3);
+}
+#endif // WATCHFACE_STARFIELD_BLOCKWATCH
 
 static void starfieldInitWatchface()
 {
@@ -478,8 +615,18 @@ static void starfieldInitWatchface()
     rM.starfield.lastSunPosition = -1;
     rM.starfield.lastMoonIndex = -1;
     rM.starfield.lastWifiStatus = !WiFi.isConnected();
+    rM.starfield.lastBlockHeight = -1;
 }
 
+#if WATCHFACE_STARFIELD_BLOCKWATCH
+static void starfieldBlockwatchInitWatchface()
+{
+    starfieldInitWatchface();
+    drawTimechainLabel();
+}
+#endif
+
+#if WATCHFACE_STARFIELD
 const watchfaceDefOne starfieldDef = {
     .drawTimeBeforeApply = starfieldDrawTimeBeforeApply,
     .drawTimeAfterApply = starfieldDrawTimeAfterApply,
@@ -511,5 +658,40 @@ const watchfaceDefOne starfieldDef = {
     .isModuleEngaged = []() { return false; },
     .lpCoreScreenPrepareCustom = NULL,
 };
+#endif // WATCHFACE_STARFIELD
+
+#if WATCHFACE_STARFIELD_BLOCKWATCH
+const watchfaceDefOne starfieldBlockwatchDef = {
+    .drawTimeBeforeApply = starfieldDrawTimeBeforeApply,
+    .drawTimeAfterApply = starfieldBlockwatchDrawTimeAfterApply,
+    .drawDay = starfieldDrawDay,
+    .drawMonth = []() {},
+    .showTimeFull = starfieldShowTimeFull,
+    .initWatchface = starfieldBlockwatchInitWatchface,
+    .drawBattery = starfieldDrawBattery,
+    .manageInput = [](buttonState bt)
+    {
+        switch (bt)
+        {
+        case Menu:
+            generalSwitch(mainMenu);
+            break;
+#if LONG_BACK_FULL_REFRESH
+        case LongBack:
+            debugLog("Long back - full refresh");
+            updateDisplay(FULL_UPDATE);
+            break;
+#endif
+        default:
+            break;
+        }
+    },
+    .watchfaceModules = false,
+    .watchfaceModSquare = {.size{.w = 0, .h = 0}, .cord{.x = 0, .y = 0}},
+    .someDrawingSquare = {.size{.w = 0, .h = 0}, .cord{.x = 0, .y = 0}},
+    .isModuleEngaged = []() { return false; },
+    .lpCoreScreenPrepareCustom = NULL,
+};
+#endif // WATCHFACE_STARFIELD_BLOCKWATCH
 
 #endif
