@@ -118,7 +118,7 @@ const watchfaceDef starfieldWatchface = {
 #if WATCHFACE_BLOCKWATCH
 const watchfaceDef blockwatchWatchface = {
     .manager = wfmOne,
-    .name = "Block Clock",
+    .name = "Blockwatch",
     .data = (genPointer)&blockwatchDef,
 };
 #endif
